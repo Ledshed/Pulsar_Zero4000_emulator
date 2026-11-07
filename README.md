@@ -211,5 +211,5 @@ They are close matches to the original lettering:
 * **Legends**: Arimo Bold, which has the same proportions as the Helvetica Bold used on the panel.
 
 ## Licence
-GNU General Public License v3.0 (see `LICENSE`). The bundled fonts keep their own licences (`public/fonts/LICENSES.txt`).
+MIT (see `LICENSE`). The bundled fonts keep their own licences (`public/fonts/LICENSES.txt`).
 The packaged downloads include the Node.js runtime (MIT licence).
