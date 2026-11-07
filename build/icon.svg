@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2c2522"/><stop offset="1" stop-color="#0d0b0a"/></linearGradient>
+    <linearGradient id="skirt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6f6f4"/><stop offset=".55" stop-color="#b9b9b6"/><stop offset=".85" stop-color="#77777a"/><stop offset="1" stop-color="#d0d0cc"/></linearGradient>
+    <radialGradient id="face" cx=".42" cy=".36" r=".75"><stop offset="0" stop-color="#fff"/><stop offset=".45" stop-color="#dcdcda"/><stop offset="1" stop-color="#9c9c98"/></radialGradient>
+    <radialGradient id="rings" cx=".5" cy=".5" r=".035" spreadMethod="repeat"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset=".5" stop-color="#000" stop-opacity=".14"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+    <radialGradient id="neon" cx=".42" cy=".38" r=".7"><stop offset="0" stop-color="#fff2c8"/><stop offset=".3" stop-color="#ff8a3a"/><stop offset=".75" stop-color="#ff3010"/><stop offset="1" stop-color="#a51406"/></radialGradient>
+    <radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ff5a20" stop-opacity=".7"/><stop offset="1" stop-color="#ff3000" stop-opacity="0"/></radialGradient>
+    <radialGradient id="sh" cx=".5" cy=".5" r=".5"><stop offset=".6" stop-color="#000" stop-opacity=".8"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#bg)"/>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="none" stroke="#e2a72e" stroke-width="14" opacity=".9"/>
+  <circle cx="512" cy="250" r="190" fill="url(#glow)"/>
+  <circle cx="512" cy="250" r="78" fill="#120807"/>
+  <circle cx="512" cy="250" r="62" fill="url(#neon)"/>
+  <ellipse cx="492" cy="226" rx="20" ry="13" fill="#fff" opacity=".45"/>
+  <circle cx="524" cy="660" r="270" fill="url(#sh)"/>
+  <circle cx="512" cy="630" r="240" fill="url(#skirt)" stroke="#444" stroke-width="4"/>
+  <circle cx="512" cy="630" r="196" fill="url(#face)"/>
+  <circle cx="512" cy="630" r="196" fill="url(#rings)"/>
+  <ellipse cx="450" cy="550" rx="90" ry="42" fill="#fff" opacity=".35" transform="rotate(-25 450 550)"/>
+  <line x1="512" y1="630" x2="630" y2="490" stroke="#151515" stroke-width="22" stroke-linecap="round" transform="rotate(0)"/>
+</svg>

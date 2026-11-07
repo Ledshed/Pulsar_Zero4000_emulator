@@ -1,0 +1,4 @@
+Fonts bundled so the panel works offline (all from Google Fonts):
+  fredoka.woff2        Fredoka        - SIL Open Font License 1.1   (PULSAR logo)
+  abril-fatface.woff2  Abril Fatface  - SIL Open Font License 1.1   (ZERO 4000)
+  arimo.woff2          Arimo          - Apache License 2.0          (panel legends, Helvetica-metric)
