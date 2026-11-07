@@ -1,0 +1,28 @@
+#include <winver.h>
+1 ICON "../icon.ico"
+1 24 "launcher.manifest"
+1 VERSIONINFO
+FILEVERSION     @V1@,@V2@,@V3@,0
+PRODUCTVERSION  @V1@,@V2@,@V3@,0
+FILEOS 0x40004
+FILETYPE 0x1
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "Pulsar Zero 4000 emulator"
+      VALUE "FileDescription", "Pulsar Zero 4000 emulator (Windows 7/8)"
+      VALUE "FileVersion", "@VERSION@"
+      VALUE "InternalName", "pulsar-zero4000"
+      VALUE "OriginalFilename", "Pulsar Zero 4000.exe"
+      VALUE "ProductName", "Pulsar Zero 4000"
+      VALUE "ProductVersion", "@VERSION@"
+      VALUE "LegalCopyright", "Emulation software; Pulsar is a trademark of its owner"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END

@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="z4k-token" content="{{TOKEN}}">
+<link rel="icon" href="icon.png">
+<title>Pulsar Zero 4000</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+
+<main id="stage">
+  <div id="panelWrap"></div>
+</main>
+<div id="banner" class="banner" hidden></div>
+<header class="bar" id="bar">
+  <div class="brand">Pulsar Zero 4000 <span id="unitName" class="unitname"></span></div>
+  <nav class="menus">
+    <button class="menu" data-drop="dropUnit">Unit <b>▾</b></button>
+    <button class="menu" data-drop="dropAudio">Audio <b>▾</b></button>
+    <button class="menu" data-drop="dropOut">Outputs <b>▾</b></button>
+    <button class="menu" data-drop="dropEmu">Emulation <b>▾</b></button>
+    <button class="menu" data-drop="dropMon">Monitor <b>▾</b></button>
+  </nav>
+  <div class="status">
+    <span id="clash" class="pill bad" hidden>⚠ overlaps another unit</span>
+    <span id="audioState" class="pill" title="Audio source">audio off</span>
+    <span id="netSacn" class="pill">sACN</span>
+    <span id="netDdp" class="pill">DDP</span>
+    <span id="conn" class="pill bad">offline</span>
+    <button id="panelOnly" class="icon" title="Show the front panel only (H)">⤢ Panel only</button>
+  </div>
+</header>
+<div id="drops">
+<!-- ============ UNIT ============ -->
+<section class="drop narrow" id="dropUnit" hidden>
+  <div class="drop-head"><h2>Unit</h2><button class="close" title="Close">✕</button></div>
+  <div class="card">
+    <label class="row">Name of this unit <input id="unitRename" maxlength="40"></label>
+    <div id="clashList" class="help" hidden></div>
+    <h3>All units</h3>
+    <ul class="unitlist" id="unitList"></ul>
+    <p class="note">Each unit is a separate Zero 4000, with its own panel settings, audio source, filters and outputs. Give each one its own sACN universe (or different addresses) so they don't fight over the same lights. New units start on the next free universe.</p>
+    <div class="unitbtns">
+      <a class="btn" href="#" target="_blank" rel="noopener" id="addUnit">＋ Add unit</a>
+      <button id="delUnit">Delete this unit</button>
+      <button id="quitApp" class="danger">Quit Pulsar Zero 4000</button>
+    </div>
+  </div>
+</section>
+<!-- ============ AUDIO ============ -->
+<section class="drop" id="dropAudio" hidden>
+  <div class="drop-head"><h2>Audio</h2><button class="close" title="Close">✕</button></div>
+  <div class="audio-grid">
+    <div class="card">
+      <h3>1 · Sound source</h3>
+      <div class="seg">
+        <button id="srcMic" class="src">🎤 Mic / line-in</button>
+        <button id="srcPc" class="src">🖥 PC audio</button>
+        <label class="src file" id="srcFile">🎵 Music file…<input id="audioFile" type="file" accept="audio/*"></label>
+        <button id="srcStop" class="src">■ Off</button>
+      </div>
+      <label class="row" id="devRow">Input device <select id="audioDev"><option value="">Default input</option></select></label>
+      <div id="audioHelp" class="help" hidden></div>
+      <h3>2 · Level</h3>
+      <label class="row">Input trim <input type="range" min="-24" max="24" step="1" data-k="audio.trimDb"><output data-out="audio.trimDb" data-unit=" dB"></output></label>
+      <label class="row">Sensitivity <input type="range" min="0" max="1" step="0.01" data-k="audio.sens"><output data-out="audio.sens" data-pct></output></label>
+      <p class="note">Aim for the <b>IN</b> meter peaking in the yellow. The original has no level control (it adjusts itself), so you can usually leave trim at 0 dB.</p>
+    </div>
+
+    <div class="card meters-card">
+      <h3>Meters</h3>
+      <div class="ladders" id="ladders"></div>
+      <p class="note">The round lamp under each band lights when that band triggers. The amber outline marks the band's running average (AGC), which the level has to rise above to trigger.</p>
+    </div>
+
+    <div class="card">
+      <h3>3 · Band filters</h3>
+      <table class="filters">
+        <thead><tr><th></th><th>Low cut (Hz)</th><th>High cut (Hz)</th></tr></thead>
+        <tbody id="filterRows"></tbody>
+      </table>
+      <label class="row">Slope <select data-k="audio.slope" data-num>
+        <option value="1">6 dB/oct (original)</option><option value="2">12 dB/oct</option><option value="4">24 dB/oct</option>
+      </select></label>
+      <p class="note">0 = no filter. The original values are the Zero 4000's RC filters (schematic page 2).</p>
+      <button id="filtersReset">Reset to original</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ OUTPUTS ============ -->
+<section class="drop" id="dropOut" hidden>
+  <div class="drop-head"><h2>Outputs</h2><button class="close" title="Close">✕</button></div>
+  <div class="card colours-card">
+    <h3>Channel colours</h3>
+    <div class="colours" id="colours"></div>
+  </div>
+  <div class="out-grid">
+    <div class="card">
+      <h3><label><input type="checkbox" data-k="sacn.enabled"> sACN (E1.31)</label></h3>
+      <div class="cols">
+        <label class="row">Send to <select data-k="sacn.mode"><option value="multicast">Multicast (everyone)</option><option value="unicast">One IP (unicast)</option></select></label>
+        <label class="row" id="sacnHostRow">IP address <input data-k="sacn.host" placeholder="192.168.1.50"></label>
+        <label class="row">Universe <input type="number" min="1" max="63999" data-k="sacn.universe"></label>
+        <label class="row">Priority <input type="number" min="0" max="200" data-k="sacn.priority"></label>
+      </div>
+      <h4>Patch: which DMX addresses each channel drives</h4>
+      <table class="patch">
+        <thead><tr><th>Channel</th><th>Dimmer addresses</th><th>Colour fixtures (start addr.)</th><th>Colour order</th></tr></thead>
+        <tbody id="patchRows"></tbody>
+      </table>
+      <p class="note">Separate addresses with commas and use a dash for ranges, e.g. <code>1, 5, 9-12</code>. A colour fixture uses 3 (RGB) or 4 (RGBW) addresses from its start address, in the order you pick, and shows the channel's colour. With RGBW, any white in the colour goes to the W channel.</p>
+      <details class="quick">
+        <summary>Quick patch: fill in a row of fixtures for me</summary>
+        <div class="cols">
+          <label class="row">Fixture type <select id="qpType"><option value="dimmer">Dimmer / single channel</option><option value="colour">Colour fixture</option></select></label>
+          <label class="row" id="qpOrderRow">Colour order <select id="qpOrder"></select></label>
+          <label class="row">First address <input type="number" id="qpStart" min="1" max="512" value="1"></label>
+          <label class="row">Number of fixtures <input type="number" id="qpCount" min="1" max="512" value="8"></label>
+          <label class="row">Channels per fixture <input type="number" id="qpFoot" min="1" max="64" value="1"></label>
+        </div>
+        <p class="note">Fixtures are assigned in turn: Bass, Tenor, Alto, Treble, Bass, … so a chase runs along the whole row.</p>
+        <button id="qpGo">Fill in patch</button>
+      </details>
+      <p class="summary" id="patchSummary"></p>
+      <p class="netstatus" id="sacnStatus"></p>
+    </div>
+
+    <div class="card">
+      <h3><label><input type="checkbox" data-k="ddp.enabled"> DDP (pixels, e.g. WLED)</label></h3>
+      <div class="cols">
+        <label class="row">IP address or name <input data-k="ddp.host" placeholder="192.168.1.60"></label>
+        <label class="row">Port <input type="number" data-k="ddp.port"></label>
+        <label class="row">Pixels per channel <input type="number" min="1" max="1000" data-k="ddp.pixelsPerChannel"></label>
+        <label class="row">Repeat pattern × <input type="number" min="1" max="100" data-k="ddp.repeat"></label>
+        <label class="row">Start pixel <input type="number" min="0" data-k="ddp.startPixel"></label>
+        <label class="row">Destination ID <input type="number" min="1" max="255" data-k="ddp.destId"></label>
+        <label class="row">Colour order <select data-k="ddp.order" class="orderSel"></select></label>
+      </div>
+      <p class="summary" id="ddpSummary"></p>
+      <p class="netstatus" id="ddpStatus"></p>
+      <p class="netstatus" id="wledStatus"></p>
+      <button id="ddpTest" title="Lights every DDP pixel white for 5 seconds, even if DDP is switched off, and checks what WLED receives">Send test (all white, 5 s)</button>
+      <p class="note">For WLED, use its IP address (shown in WLED under Config → WiFi Setup, or on your router). In WLED, under
+        <b>Config → Sync Interfaces → Realtime</b>, make sure <b>Receive UDP realtime</b> is ticked.
+        Port 4048 is the standard DDP port; don't use WLED's web port (80).</p>
+      <h3>General</h3>
+      <div class="cols">
+        <label class="row">Frames per second <input type="number" min="1" max="120" data-k="output.fps"></label>
+        <label class="row" title="Lighting gear is normally on your local network. Leave this off unless you really send to an internet address.">
+          <span><input type="checkbox" data-k="output.allowPublic"> Allow internet addresses (not just local network)</span></label>
+        <label class="row">Master level <input type="range" min="0" max="1" step="0.01" data-k="output.master"><output data-out="output.master" data-pct></output></label>
+      </div>
+      <p class="note">When you untick an output, it sends black (and an sACN stream-terminate) so your lights don't freeze on the last frame.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ EMULATION ============ -->
+<section class="drop narrow" id="dropEmu" hidden>
+  <div class="drop-head"><h2>Emulation</h2><button class="close" title="Close">✕</button></div>
+  <div class="card">
+    <label class="row"><span><input type="checkbox" data-k="panel.power"> Mains power on</span></label>
+    <label class="row">Mains frequency <select data-k="emulation.mainsHz" data-num><option value="50">50 Hz</option><option value="60">60 Hz</option></select></label>
+    <label class="row"><span><input type="checkbox" data-k="emulation.lampSim"> Simulate incandescent lamps (soft fade)</span></label>
+    <label class="row">Lamp warm-up <input type="number" min="1" max="2000" data-k="emulation.lampRiseMs"> ms</label>
+    <label class="row">Lamp cool-down <input type="number" min="1" max="2000" data-k="emulation.lampFallMs"> ms</label>
+    <label class="row" title="R81–R83 / D14–D16 on schematic page 8B"><span><input type="checkbox" data-k="emulation.trebleInhibit"> Treble switches off when Bass + Tenor + Alto are all on (as original)</span></label>
+    <label class="row" title="Rear-panel remote jack (4N27 opto) shorts the FULL pad"><span><input type="checkbox" data-k="emulation.remoteFull"> Remote input closed (forces Full)</span></label>
+  </div>
+</section>
+
+<!-- ============ MONITOR ============ -->
+<section class="drop narrow" id="dropMon" hidden>
+  <div class="drop-head"><h2>Monitor</h2><button class="close" title="Close">✕</button></div>
+  <div class="card">
+    <h3>What's being sent</h3>
+    <div class="lamps" id="lamps"></div>
+    <h3>Chaser state</h3>
+    <div class="diag" id="diag"></div>
+    <h3>Diagnostics</h3>
+    <p class="note">If something isn't working, press this and paste the text into a message to whoever supports you.</p>
+    <button id="diagBtn">Copy diagnostics</button> <span id="diagMsg" class="note"></span>
+    <textarea id="diagText" readonly hidden></textarea>
+  </div>
+</section>
+
+</div>
+<p class="hint" id="hint">Drag or scroll the knobs, click the top, middle or bottom of a rocker, hold Manual Flash (keys 1–4). Press <b>H</b> to hide everything except the panel.</p>
+<div id="overlay" class="overlay" hidden><div class="card" id="overlayMsg"></div></div>
+<div id="toast" class="toast" hidden></div>
+<button id="showUi" class="showui" hidden title="Show menus (H)">☰ Menus</button>
+
+<script src="panel.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

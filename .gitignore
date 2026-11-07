@@ -1,0 +1,5 @@
+state.json
+node_modules/
+dist/
+build/.cache/
+*.zip

@@ -1,0 +1,19 @@
+{
+  "name": "pulsar-zero4000-emulator",
+  "version": "1.4.0",
+  "description": "Software emulation of the Pulsar Zero 4000 sound-to-light chaser with DDP and sACN output",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "build": "node build/build.mjs",
+    "test": "node test/ui-ids-test.js && node test/emulator-test.js"
+  },
+  "engines": { "node": ">=22" },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "postject": "1.0.0-alpha.6",
+    "resedit-cli": "3.1.1"
+  },
+  "license": "MIT"
+}
