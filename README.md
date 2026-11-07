@@ -1,215 +1,302 @@
 # Pulsar Zero 4000 emulator
 
-A software version of the 1980 Pulsar Zero 4000 four-channel sound-to-light chaser, built from the
-original circuit drawings (RJM, Oct/Nov 1980). The front panel is drawn on screen, and the four
-channels are sent out as **sACN (E1.31)** and/or **DDP**.
+A faithful software recreation of the **Pulsar Zero 4000**, the classic four-channel sound-to-light
+chaser made by Pulsar Light in the early 1980s. The original front panel appears on your
+screen, and it drives modern lighting over your network as **sACN (E1.31)** and/or **DDP**: DMX
+dimmers, RGB/RGBW fixtures, and LED strips running WLED and similar controllers.
 
-## For end users: the ready-made downloads
-Tests: `npm test` (page/script element check and the schematic checks), and against a running copy with a
-fresh settings folder `node test/core-test.js beat.wav`
-(audio in → sACN/DDP out), `node test/security-test.js` and `node test/audio-robustness-test.js`.
+![The emulated Zero 4000 front panel](docs/front-panel.png)
 
-Run `npm run build` (see **Building** below) to produce three downloads in `dist/`:
+The behaviour isn't guessed. It is worked out from Pulsar's own circuit diagrams (drawings by RJM,
+October–November 1980), stage by stage: the audio filters, the music detectors, the chase circuit, the
+auto-program counter and the mains-synchronised output switching. Automatic tests check it against
+those drawings.
 
-| Download | What's inside | How to start it |
+**[⬇ Download the latest version](https://github.com/ledshed/pulsar_zero4000_emulator/releases/latest)**
+
+---
+
+## Contents
+- [What it does](#what-it-does)
+- [Download and run](#download-and-run)
+- [Quick start](#quick-start)
+- [The front panel](#the-front-panel)
+- [Connecting your lights](#connecting-your-lights)
+- [Menus](#menus)
+- [Several units at once](#several-units-at-once)
+- [Troubleshooting](#troubleshooting)
+- [How faithful is it?](#how-faithful-is-it)
+- [Security](#security)
+- [For developers](#for-developers)
+- [Credits and licence](#credits-and-licence)
+
+---
+
+## What it does
+- **Sound-to-light, the 1980 way.** Music is split into four bands (Bass, Tenor, Alto, Treble) with the
+  original filter values. Each band flashes its channel when it rises above its own recent level, so there's
+  no sensitivity knob to fiddle with, just as on the real unit.
+- **Chaser with automatic programs.** It cycles through Pairs, Dark and Light chases, each running forwards
+  and then backwards. In *Music* mode the chase steps with the beat; in *Constant* mode it runs at the
+  Speed setting.
+- **Every front-panel control works:** Standby / Shimmer Dim / Full, the four six-position channel
+  selectors, the Manual Flash buttons, Speed, and Music / Program Hold / Constant.
+- **Modern outputs:** sACN to any DMX addresses (dimmers, or RGB/RGBW fixtures in any colour order), and
+  DDP to pixel strips (WLED, xLights, Falcon…). You pick the colour for each channel.
+- **Optional incandescent-lamp simulation**, so LED fixtures fade in and out like the filament bulbs the
+  unit was designed for.
+- **Several units at once**, each in its own browser tab with its own outputs.
+- **Runs anywhere:** Windows 10/11, Windows 7/8, macOS (Apple Silicon and Intel) and Linux. There is
+  nothing to install, and it works offline.
+
+## Download and run
+Get the file for your computer from the
+**[Releases page](https://github.com/ledshed/pulsar_zero4000_emulator/releases/latest)**:
+
+| Your computer | Download | How to start it |
 |---|---|---|
-| `PulsarZero4000-Windows.zip` | `Pulsar Zero 4000.exe` (Windows 10/11) | Double-click. Leave the small black window open while it runs. |
-| `PulsarZero4000-Windows7.zip` | `Pulsar Zero 4000.exe` + `runtime` folder (Windows 7/8/8.1, also runs on 10/11) | Unzip the whole folder and double-click the .exe. |
-| `PulsarZero4000-Mac.zip` | `Pulsar Zero 4000.app` (works on Apple Silicon and Intel) | Drag it to Applications and double-click. It runs in the background; use Unit ▸ Quit to stop it. |
-| `PulsarZero4000-Linux.tar.gz` | `pulsar-zero4000` | `./pulsar-zero4000` |
+| Windows 10 or 11 | `PulsarZero4000-Windows.zip` | Unzip it and double-click **Pulsar Zero 4000.exe**. |
+| Windows 7, 8 or 8.1 | `PulsarZero4000-Windows7.zip` | Unzip the **whole folder** and double-click **Pulsar Zero 4000.exe** (keep it next to its `runtime` folder). |
+| Mac (macOS 11 or newer) | `PulsarZero4000-Mac.zip` | Drag **Pulsar Zero 4000.app** to Applications and double-click it. |
+| Linux (x64) | `PulsarZero4000-Linux.tar.gz` | Unpack it and run `./pulsar-zero4000`. |
 
-Each download includes a `READ ME FIRST.txt`. It explains the one-time security warning: the
-programs aren't code-signed, so Windows shows "Windows protected your PC" and macOS shows
-"Apple could not verify…".
+Your web browser opens on the front panel. Use Chrome, Edge or Firefox.
 
-There is nothing to install. The browser opens on the front panel automatically. Settings are saved in
-the user's app-data folder (`%APPDATA%\Pulsar Zero 4000`, `~/Library/Application Support/Pulsar Zero 4000`
-or `~/.config/pulsar-zero4000`).
+- **Windows:** a small black window opens as well. Leave it open while you use the emulator; closing it
+  stops the emulator.
+- **Mac:** the emulator runs in the background. Stop it with **Unit ▸ Quit** in the browser.
+
+**The first time you run it,** your computer will warn you, because the program isn't signed with a paid
+developer certificate:
+- **Windows:** "Windows protected your PC". Click **More info**, then **Run anyway**.
+- **Mac:** "Apple could not verify…". Open **System Settings → Privacy & Security** and click **Open
+  Anyway**.
+
+If the firewall asks, click **Allow**; the emulator needs this to send to your lights. Each download
+includes a `READ ME FIRST.txt` with the same steps.
+
+Your settings are saved automatically: in `%APPDATA%\Pulsar Zero 4000` on Windows,
+`~/Library/Application Support/Pulsar Zero 4000` on a Mac, and `~/.config/pulsar-zero4000` on Linux.
+
+## Quick start
+1. **Start it.** The panel opens in your browser.
+2. **Give it sound.** Open **Audio** (under the panel) and choose a source:
+   - 🎤 **Mic / line-in:** a microphone, or a mixer plugged into the computer's input;
+   - 🖥 **PC audio:** whatever is playing on the computer (Chrome or Edge; tick **Share system audio** in
+     the pop-up);
+   - 🎵 **Music file:** play a file straight in.
+3. **Set the panel.** Put the left rocker on **Full**, the right rocker on **Music + Auto Program**, and
+   turn the four channel knobs to **Chase** (or to their music position: Bass, Tenor, Alto, Treble). The
+   four red lamps start following the music.
+4. **Connect your lights.** Open **Outputs** and tick **sACN** or **DDP** (see
+   [Connecting your lights](#connecting-your-lights)).
+5. **Optional:** click **⤢ Panel only** (or press **H**) to show just the front panel.
+
+## The front panel
+The controls work exactly as the circuit diagrams say. You click or drag the knobs, click the top, middle
+or bottom of a rocker, and click (or hold) the Manual Flash buttons. Keys **1–4** also work the Manual
+Flash buttons.
+
+**Standby / Shimmer Dim / Full** (left rocker) sets the master output:
+- **Standby:** all lights off (0 %).
+- **Shimmer Dim:** about 50 %. The original passes every other mains cycle, which gives a gentle shimmer.
+- **Full:** 100 %.
+
+**Channel selectors** (one per channel: Bass, Tenor, Alto, Treble):
+
+| Position | What the channel does |
+|---|---|
+| **Off** | Off. |
+| **Static** | On all the time. (On the circuit, this contact is wired straight to the supply rail.) |
+| **Flip-Flop / Flop-Flip** | Flashes in step with the chase, Bass + Tenor against Alto + Treble, so the two pairs alternate. |
+| **Chase** | Takes its place in the four-channel chase. |
+| **Bass / Tenor / Alto / Treble** (amber) | Flashes with its own band of the music. |
+| **Man.** | Off, until you hold that channel's **Manual Flash** button. The button only works in this position. |
+
+**Speed** sets how fast the chase runs, from about one step every 3½ seconds up to about 40 steps a
+second.
+
+**Music + Auto Program / Program Hold / Constant + Auto Program** (right rocker):
+- **Music + Auto Program:** the chase only moves while there's music, and goes faster the busier the music
+  is. Speed sets the top rate.
+- **Constant + Auto Program:** the chase runs steadily at the Speed setting.
+- **Program Hold** (centre): keeps the current chase pattern and direction. It remembers whether you were
+  on Music or Constant.
+
+**Auto program:** the chase works through **Pairs** (two lamps on), **Dark** (one lamp off) and **Light**
+(one lamp on). Each runs forwards (Bass → Treble → Alto → Tenor) and then backwards (Bass → Tenor → Alto →
+Treble). It changes direction every 16 chase cycles and pattern every 32.
+
+**Treble switches off whenever Bass, Tenor and Alto are all on.** This is how the original circuit is
+wired. If you'd rather not have it, untick the option under **Emulation**.
+
+The red lamp above each channel shows that channel's output, and **Power** shows the unit is on.
+
+## Connecting your lights
+Open **Outputs**.
+
+**Channel colours:** pick a colour for each channel (presets or any colour). Colour fixtures and pixels
+show these colours; plain dimmers just use the brightness.
+
+**sACN (E1.31):** for DMX lighting (through an sACN-to-DMX node, or fixtures and software that speak
+sACN).
+- Choose **multicast** (the usual choice) or a single IP address, and set the **universe**.
+- In the **patch**, give each channel the DMX addresses it should drive:
+  - **Dimmer addresses**, e.g. `1, 5, 9-12`;
+  - **Colour fixtures** by start address, with the fixture's **colour order** (RGB, GRB, RGBW, …). With
+    RGBW, white goes to the W channel.
+- **Quick patch** fills in a whole row of fixtures for you. They are assigned Bass, Tenor, Alto, Treble,
+  Bass, … so the chase runs along the row.
+
+**DDP:** for LED strips and pixel controllers (WLED, xLights, Falcon…).
+- Enter the controller's **IP address**.
+- Set the **pixels per channel**, **repeat ×N** (to repeat the four channels along a long strip) and the
+  colour order.
+- Press **Send test**. It lights every pixel white for 5 seconds and **asks the WLED what it's
+  receiving**, then tells you in plain words whether it works and, if not, why.
+
+Unticking an output sends black first, so your lights don't freeze on the last frame.
+
+## Menus
+- **Unit:** rename this unit, open or add other units, delete a unit, or quit the emulator.
+- **Audio:** sound source, input trim and sensitivity, 24-LED meters for the input and each band (with a
+  trigger lamp per band), and the band filters (original values, or your own; **Reset to original** puts
+  them back).
+- **Outputs:** colours, sACN, DDP, frame rate and master level.
+- **Emulation:**
+  - mains frequency (50 / 60 Hz);
+  - lamp simulation (soft incandescent fades, or hard on/off switching);
+  - the treble-reset behaviour;
+  - the rear-panel remote input (forces Full);
+  - power.
+- **Monitor:** what's being sent, the chaser's current state, and **Copy diagnostics** (a text report to
+  paste into a support message).
 
 ## Several units at once
-One running program can host as many units as you like. Use **Unit ▸ ＋ Add unit** to open another
-Zero 4000 in a new browser tab. Each unit has its own name, panel settings, audio source and filters,
-and outputs. New units start on the next free sACN universe. A red **⚠ overlaps another unit** warning
-appears if two units drive the same sACN addresses or the same DDP pixels. Starting the program again
-while it's running just opens another browser tab, and it switches to the next port if 8040 is
-taken. Units live at `http://localhost:8040/u/<n>/`.
+One running emulator can host as many units as you need. Use **Unit ▸ ＋ Add unit**, and each new unit
+opens in its own browser tab with its own panel, sound source and outputs. New units start on the next
+free sACN universe, and a red **⚠ overlaps another unit** warning appears if two units would drive the
+same addresses or pixels.
+
+If you start the program again while it's already running, it just opens another tab. Starting a newer
+version automatically closes an older copy, so two copies never fight over your lights.
+
+## Troubleshooting
+**No lights at all**
+- Is the left rocker on **Full**, and are the knobs off **Off** / **Man.**? The red lamps on the panel
+  show what's being sent.
+- Is **sACN** or **DDP** ticked in **Outputs**? The status line under each says what's happening.
+- **WLED / DDP:** press **Send test** and read the line under it. The common fixes are:
+  - in WLED, **Config → Sync Interfaces → Realtime → Receive UDP realtime** must be ticked;
+  - check the IP address;
+  - firewall or security software may be blocking it.
+
+**Lights don't follow the music**
+- Open **Audio** and check the **IN** meter moves.
+- With PC audio, make sure **Share system audio** was ticked when you shared the screen.
+- If the meters move but nothing triggers, check the knobs are on their music position (or Chase, with
+  the right rocker on **Music**).
+
+**Treble never comes on with the other three:** that's the original circuit's treble reset. Untick it in
+**Emulation** if you prefer.
+
+**Windows 7:** use the **Windows 7** download. The main Windows version needs Windows 10 or 11 and shows
+an error about `GetSystemTimePreciseAsFileTime` on Windows 7.
+
+## How faithful is it?
+Each part of the original circuit is modelled. The page numbers refer to Pulsar's circuit diagrams.
+
+| Original circuit | Emulation |
+|---|---|
+| Audio input and log amp (p3) | Stereo mixed to mono, then diode-style log compression |
+| Band filters (p2) | First-order RC filters with the Zero 4000's values: Bass below 106 Hz, Tenor 360–530 Hz, Alto 1.45–2.1 kHz, Treble above 3.6 kHz |
+| Music detectors (p7) | Peak detector (≈33 ms attack, 121 ms release) with ≈1 s automatic gain control |
+| Run-pulse oscillator (p4) | C9 ramp with the 1 MΩ log Speed pot (≈0.28–42 steps/s). In Music mode the detectors drive it, so the chase only runs with music |
+| Music / Hold / Constant (p5) | 4001 latch remembers the mode; Hold stops the program counter |
+| Chaser (p6B) | 3 × 4013 shift register; R23 / D8–D9 / D11–D12 / 4016 select the Pairs, Dark and Light feedback; the 4016 reverse switches set the direction |
+| Auto program (p6B) | 4024 counter clocked once per chase cycle: ÷2⁵ reverse, ÷2⁶/÷2⁷ pattern, reset after Light |
+| Channel selectors (p7) | 2-pole 6-way switch; Static wired to the supply rail; Manual Flash only on *Man.* |
+| Output stage (p8B) | 4013 latches clocked by the mains (switching only at zero crossings); Shimmer = alternate cycles; Standby holds the latches off; Treble latch reset by R83 / D15 / D16 when the other three are on; lamps off briefly at power-up (C11) |
+| Remote jack | The 4N27 opto input that forces Full: a tick-box under Emulation |
+
+`test/emulator-test.js` checks 22 of these behaviours against the drawings, each naming its page, and it
+runs on every build.
+
+**Where the drawings leave room for judgement:**
+- exactly how strongly the music speeds up the chase in Music mode (here, two busy bands reach full speed);
+- the precise music-trigger threshold.
+
+The **input trim** and **sensitivity** sliders aren't on the original. They help with modern line levels,
+and they start neutral.
 
 ## Security
-The emulator controls lights and listens for browser connections, so it defends itself:
+The emulator controls real lights, so it is built defensively:
+- It only accepts connections from **this computer**.
+- Every connection must come from the emulator's own page (Origin and Host checks, which also block
+  DNS-rebinding tricks) and carry a **random token** created each time it starts. Other websites open in
+  your browser can't control it.
+- Incoming messages are size-limited and rate-limited, and malformed ones are rejected.
+- Every setting is checked against a strict list of allowed values, ranges and formats.
+- Lighting data only goes to **local-network addresses**, unless you tick **Allow internet addresses**.
+- Security headers stop the panel being embedded in other sites.
 
-* **Network exposure:** it only listens on `127.0.0.1` (this computer).
-* **Other websites in your browser:** binding to localhost alone doesn't stop a web page from trying to
-  connect, so every connection must pass three checks:
-  * The **Host header** must be a name that means this computer (`localhost`, `127.0.0.1` or this
-    computer's own IP address, on this port). This blocks DNS-rebinding attacks.
-  * The **Origin** must be this app's own page.
-  * It must carry a **random per-run token**. The server puts the token into its own page, where only
-    same-origin scripts can read it.
-  "Add unit" (`/new`) needs the token too. Responses send `X-Frame-Options: DENY` and a strict
-  Content-Security-Policy (no framing, own scripts only), so the panel can't be embedded in another site.
-* **WebSocket input** (`wsproto.js`):
-  * messages may be up to 64 KB, in at most 16 fragments, with the buffered data capped;
-  * client frames must be masked, and reserved bits, unknown opcodes, oversized or fragmented control
-    frames, out-of-order continuations, binary frames and invalid UTF-8 are rejected;
-  * there's a per-connection message rate limit, a 10-second limit for finishing a frame, and caps on
-    connections and units;
-  * a violation closes the connection with the matching RFC 6455 status code.
-* **Settings** (`validate.js`): an explicit schema with allowed keys, types, numeric ranges, enums,
-  string lengths and formats (colours, DMX address lists, IP addresses and host names). Unknown keys,
-  including `__proto__`, are ignored. Anything rejected is reported back to the page. Saved settings are
-  validated the same way when they're loaded.
-* **Destinations and probing:** sACN and DDP only go to local-network addresses (loopback, RFC 1918,
-  link-local, CGNAT) unless **Allow internet addresses** is ticked. The WLED check only queries a device on
-  this computer's own subnet, and only while someone has that unit open. It makes two fixed GET requests
-  to port 80, with a 1.5-second timeout and a size limit, and doesn't follow redirects.
-* **Upgrading:** a newer copy stops an older one using the token written to `instance.json` in the settings
-  folder, which only the user can read (mode 0600).
+`test/security-test.js` runs 38 attack tests against a running copy.
 
-## Troubleshooting DDP
-Go to **Outputs → DDP** and press **Send test**. It sends white for 5 seconds and asks the WLED what it's
-receiving (through WLED's `/json/si` and `/json/cfg`), then reports one of these:
-
-* **receiving ✔**: it works.
-* **Receive UDP realtime is OFF**: switch it on in WLED.
-* **Override live data is on**: switch it off in WLED.
-* **reachable but isn't receiving**: something on the computer (firewall or security software) or on the network (guest/IoT VLAN) is blocking UDP.
-* **not on the same network**: the IP address is wrong.
-* **receiving DDP from another device**: something else is also sending to that WLED.
-
-At start-up, an older copy of the app that's still running is shut down automatically, so two copies
-can't both send to the lights. **Monitor → Copy diagnostics** gives a text report you can paste into a
-support message.
-
-## Running from source (developers)
+## For developers
+**Run from source** (Node 22 or newer; no runtime dependencies):
 ```bash
-node server.js            # opens http://localhost:8040/ in your browser
-node server.js --port 8040 --data ./mydata --no-open
-
+node server.js
 ```
-You need Node 22 or later. There are no runtime dependencies. If an old `state.json` is next to
-`server.js`, it is imported into Unit 1 on first run.
+Options: `--port 8040`, `--data <folder>` (settings folder) and `--no-open` (don't open a browser).
 
-## Building
+**Tests:**
 ```bash
-npm install          # build tools only: esbuild, postject, resedit-cli
-npm run build        # all platforms, or e.g.  npm run build -- win
+npm test
 ```
-The Windows 7 target (`win7`) needs mingw-w64 (`apt install gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64`). Node 22
-won't start on Windows 7, because it imports `GetSystemTimePreciseAsFileTime`, which Windows 7 doesn't have. So this
-target bundles the app for Node 13.14, the last release that supports Windows 7, and ships it as a `runtime` folder
-with a small C launcher (`build/win7/launcher.c`) that only uses Windows XP-era APIs. The engine is shipped as
-`runtime/pulsar-zero4000-engine.exe`, with Pulsar's name and icon, so Task Manager shows "Pulsar Zero 4000". The `postject` message
-"Relocation corrupted: BlockSize is out of bound" during the main Windows build is harmless.
+This runs the page/script consistency check and the 22 schematic checks. These need a running copy and
+[Playwright](https://playwright.dev/):
+- `node test/core-test.js beat.wav`: end-to-end, from audio in to sACN/DDP out (use a fresh `--data` folder);
+- `node test/security-test.js`;
+- `node test/audio-robustness-test.js`.
 
-The build uses Node's *single executable application* support. It bundles the app, embeds `public/`
-as assets, and injects both into the official Node binary for each platform, using the same Node
-version as the one running the build. It also adds the icon and version information to the `.exe`,
-and ad-hoc signs the Mac binaries (Apple Silicon won't run unsigned code). On Linux it downloads
-`rcodesign` for the signing; on a Mac it uses `codesign`. To get rid of the security warnings, sign
-the Windows `.exe` with a code-signing certificate, and sign and notarize the Mac app with an Apple
-Developer ID ($99 a year).
+**Build the downloads:**
+```bash
+npm install
+```
+```bash
+npm run build
+```
+This produces Windows, Windows 7, Mac and Linux packages in `dist/`.
+- The main packages use Node's *single executable application* support: the app and its page files are
+  injected into the official Node binary, with the icon and version information added, and the Mac
+  binaries ad-hoc signed.
+- The Windows 7 package uses Node 13.14 (the last version that supports Windows 7) and a small C launcher.
+  Building it needs mingw-w64.
+- The build tools are only needed for building: esbuild, postject and resedit-cli.
 
-## Architecture
-* `emulator.js`: the circuit logic, simulated in 0.5 ms steps. It keeps running on the server, so the
-  outputs carry on when the browser tab is hidden or closed, just as the hardware would.
-* `outputs.js`: the sACN and DDP packet senders, plus host-name handling (pasted URLs, `:port`, mDNS `.local`).
-* `validate.js`: strict validation of all settings and messages.
-* `wsproto.js`: the WebSocket protocol, with size, fragment, rate and timeout limits.
-* `netcheck.js`: network diagnostics (local addresses, same-subnet check, WLED status query).
-* `server.js`: hosts the units; static files (from disk, or embedded in the executable), a small WebSocket
-  server, the 40 fps output loop per unit, saved settings, single-instance start-up and browser launch.
-* `build/`: the build script, the icon and the READ ME FIRST notes for each platform.
-* `public/detector.js`: the audio front end as an AudioWorklet (log amp, the four RC band filters,
-  peak detectors and AGC).
-* `public/panel.js`: the SVG front panel.
+**Code layout:**
 
-## Using it
-The front panel stays pinned at the top of the page. The menu bar sits under it, and each menu opens
-below the panel (the panel shrinks a little so it never gets covered):
-
-* **Audio**:
-  * Sound source: 🎤 mic / line-in (choose the device), 🖥 PC audio, 🎵 music file, or off.
-  * Input trim and sensitivity.
-  * 24-LED green/yellow/red ladder meters for the input and each band. Each band has a trigger lamp and an
-    amber marker showing its running average.
-  * Band filter editor: low cut and high cut for each band, slope 6/12/24 dB per octave, and
-    **Reset to original**.
-* **Outputs**:
-  * Channel colours: a colour picker for each channel, with preset swatches and a hex box.
-  * sACN patch: each channel can drive any list of dimmer addresses (`1, 5, 9-12`) and/or colour
-    fixtures (by start address). Each channel has its own colour order: RGB, RBG, GRB, GBR, BRG, BGR
-    (3 ch) or RGBW, GRBW, BGRW, WRGB (4 ch). With RGBW, the white part of the colour is sent on W.
-    **Quick patch** fills in a row of N fixtures, assigning Bass, Tenor, Alto, Treble in turn.
-  * DDP: pixels per channel, pattern repeated ×N along the strip, and colour order (an RGBW order
-    sends 4-byte RGBW pixels).
-  * Frame rate and master level.
-  * Unticking an output sends black (sACN also sends stream-terminate), so lights don't freeze.
-* **Emulation**: mains power and frequency, lamp simulation, treble-reset behaviour, remote input.
-* **Monitor**: what's being sent, and the chaser's current state.
-* **⤢ Panel only** (or the **H** key) hides everything except the panel. Move the mouse to show the
-  ☰ Menus button, or press **H** again.
-
-PC audio works in Chrome and Edge. In the pop-up, pick **Entire screen** and switch on **Share system
-audio**. Open the page as `localhost:8040`, because browsers only allow audio capture there.
-
-## What is emulated (with schematic page)
-| Function | Behaviour |
+| File | Purpose |
 |---|---|
-| Audio in (p3) | Stereo summed to mono, then diode log compression |
-| Filters (p2, Zero 4000 values) | Bass LP 106 Hz · Tenor 360–530 Hz · Alto 1.45–2.1 kHz · Treble HP 3.6 kHz (first-order RC). You can change these in Audio → Band filters |
-| Music detect (p7) | Peak-peak detector (≈33 ms attack / 121 ms release) with ≈1 s AGC. A channel fires when its band rises above its own recent average |
-| Run pulse generator (p4) | C9 ramp oscillator, 1 M log SPEED pot: about 0.28 to 42 steps/s. **Music** mode: the chase advances only while music is detected, at a rate that rises with how much music is present. **Constant** mode: runs at the pot speed |
-| Program rocker (p5) | Music+Auto / Program Hold (centre keeps the last music or constant mode and stops the auto-program change) / Constant+Auto |
-| Chaser (p6B) | 3 × 4013 shift register with feedback. Bass = D1 and Alto = Q2. Tenor and Treble go through the 4016 reverse switches: forward (via R25/R26) is Tenor = Q3 and Treble = Q1, so the chase runs Bass → Treble → Alto → Tenor; reverse runs Bass → Tenor → Alto → Treble |
-| Auto program (p6B) | 4024 counter clocked once per chase cycle (from L, i.e. every 4 steps). Each pattern runs forward then reverse: Pairs → Dark → Light → repeat. Direction changes every 64 steps; pattern every 128 steps |
-| Flip-Flop / Flop-Flip | /Q2 drives Bass+Tenor and Q2 drives Alto+Treble, so the two pairs alternate |
-| Selectors (p7) | Off (−7 V, lamp off), Static (wired to the +V rail, lamp on), Flip-Flop / Flop-Flip, Chase, Music, Man. The Manual Flash button sits between +V and the *Man.* contact, so it only works with the knob on *Man.*: the lamp is off, and on while the button is held |
-| Output latches (p8B) | Outputs change only on mains-cycle edges (zero-crossing switching). Shimmer Dim passes alternate whole cycles (50 % with shimmer). Standby = 0 %. Lights stay off briefly at power-on (C11) |
-| Treble reset (R81–83, D14–16) | R83 and D15/D16 form an AND of the Bass, Tenor and Alto outputs, which resets the Treble latch through R82 (D14 ORs in the Standby/Shimmer reset). So Treble is forced off while the other three are on. You can turn this off in Setup |
-| Remote jack | The 4N27 opto input that forces Full. It is a toggle in Setup |
-| Lamps | An optional incandescent filament model (warm-up and cool-down), so LED fixtures behave like the original lamps. Turn it off for hard triac on/off switching |
+| `emulator.js` | The circuit model, simulated in 0.5 ms steps. It runs in the server, so the lights keep going when the browser is closed. |
+| `public/detector.js` | The audio front end: log amp, band filters, peak detectors, AGC (an AudioWorklet). |
+| `public/panel.js` | The SVG front panel. |
+| `public/app.js` | The menus and the browser side. |
+| `server.js` | Units, saved settings, web server and output loop. |
+| `outputs.js` | The sACN and DDP senders. |
+| `wsproto.js` | WebSocket protocol, with limits. |
+| `validate.js` | Settings validation. |
+| `netcheck.js` | Network checks and the WLED status query. |
+| `build/` | Build script, icons, launcher and the READ ME FIRST notes. |
 
-## Output mapping
-* **sACN**: multicast (239.255.x.y) or unicast, on one universe, using the patch described above.
-  Where two channels drive the same address, the higher level wins.
-* **DDP**: UDP port 4048, RGB 8-bit. Each channel fills *N* pixels of its colour. The block of four
-  repeats ×N, starting at the start pixel you set. This works with WLED, xLights, Falcon and similar
-  controllers.
-
-## Checked against the schematic
-`node test/emulator-test.js` runs 22 checks against the drawings, each naming its page. They cover:
-* the selector positions;
-* Manual Flash only on *Man.*;
-* Flip-Flop and Flop-Flip;
-* the three chase patterns and both directions;
-* the Pairs → Dark → Light program sequence;
-* Program Hold remembering Music or Constant;
-* the speed range;
-* music gating of the run oscillator;
-* the treble reset;
-* Standby, Shimmer and mains-synchronised switching.
-
-Version 1.4.0 corrected the chase direction. Earlier versions had Tenor and Treble swapped, so each pattern
-started running the wrong way.
-
-## Interpretation notes
-The drawings do not fully settle a few points, so these are my best reading of them:
-
-* The music speed-control mix. In music mode, about two fully active bands give the full pot speed.
-* The AGC threshold.
-* Whether the treble-reset circuit acts exactly as its parts-list note ("reset circuit for treble if
-  other 3 channels are on") describes.
-
-The input-trim and sensitivity sliders are not on the original unit. They are there to help adjust
-modern line levels, and they default to neutral.
-
-## Panel fonts
-The fonts are bundled in `public/fonts` (open licences, see `LICENSES.txt`), so the panel works offline.
-They are close matches to the original lettering:
-* **PULSAR**: Fredoka Bold with a dark inline highlight, to match the fat rounded 70s logo.
-* **ZERO 4000**: Abril Fatface, a heavy high-contrast serif with full-height digits.
-* **Legends**: Arimo Bold, which has the same proportions as the Helvetica Bold used on the panel.
-
-## Licence
-MIT (see `LICENSE`). The bundled fonts keep their own licences (`public/fonts/LICENSES.txt`).
-The packaged downloads include the Node.js runtime (MIT licence).
+## Credits and licence
+- Emulation software © 2026 ledshed, released under the **MIT licence** (see [`LICENSE`](LICENSE)).
+- Based on the circuit diagrams of the Pulsar Zero 3000 II and Zero 4000 (© Pulsar Light, 1980). This
+  project isn't affiliated with or endorsed by Pulsar. "Pulsar" and "Zero 4000" are used only to
+  identify the original equipment being emulated.
+- The panel fonts are close matches to the original lettering. They are bundled under their own open
+  licences (see `public/fonts/LICENSES.txt`):
+  - Fredoka for **PULSAR**;
+  - Abril Fatface for **ZERO 4000**;
+  - Arimo for the legends.
+- The packaged downloads include the Node.js runtime (MIT licence).
