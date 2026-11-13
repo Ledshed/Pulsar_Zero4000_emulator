@@ -79,6 +79,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
 #playBtn { background: var(--phosphor); border-color: var(--phosphor); color: #06281a; }
 #resetBtn { color: var(--copper); }
 #camBtn { min-width: 118px; }
+#plugBtn { min-width: 98px; color: var(--stop); }
+#plugBtn.out { color: var(--phosphor); }
 .bar button { white-space: nowrap; flex: 0 0 auto; }
 .speed { flex: 0 1 auto; min-width: 0; white-space: nowrap; }
 .speed input { min-width: 36px; flex: 1 1 110px; }
@@ -87,6 +89,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
   .bar { gap: 5px; padding: 6px; }
   .bar button { font-size: 11px; padding: 8px 7px; min-width: 0; }
   #camBtn { min-width: 86px; }
+  #plugBtn { min-width: 64px; }
   .speed { gap: 5px; padding: 0; font-size: 11px; }
   .speed-name { display: none; }
   .speed output { min-width: 42px; }
@@ -113,7 +116,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
     <div class="intro" id="intro">
       <h1>DMX512 slot stream</h1>
       <p class="sub">One RS-485 line, 250,000 bits a second, six RGB fixtures. Every packet opens with a <b>BREAK</b> (line LOW) and a <b>mark after break</b> (HIGH), then a start code and one slot per channel. Each slot is 11 marbles: a start bit, 8 data bits sent lowest bit first, and 2 stop bits.</p>
-      <p class="sub"><b>Not like WS2812:</b> an addressable LED takes its bits off the line and blocks them, so data stops at the first LED that is not yet full. A DMX fixture takes nothing. Every slot rolls past every fixture to the end of the cable. Each fixture counts the slots going by and copies the three at its address, and the stream is never interrupted. That is also why addresses need not follow the cable: the first fixture here is set to DMX 016, so it fills last.</p>
+      <p class="sub"><b>Not like WS2812:</b> an addressable LED takes its bits off the line and blocks them, so data stops at the first LED that is not yet full. A DMX fixture takes nothing. Every slot rolls past every fixture to the end of the cable. Each fixture counts the slots going by and copies the three at its address, and the stream is never interrupted. That is also why addresses need not follow the cable: the first fixture here is set to DMX 016, so it fills last. Fixtures hold their last values between packets, but if the signal stops (try <b>Unplug</b>) they time out and fall to black.</p>
       <p class="sub"><b>Scope:</b> drag the panel to move it. Drag the grip on its right edge to stretch it and see more waveform history.</p>
       <p class="sub"><b>Camera:</b> drag to orbit, scroll or pinch to zoom, right-drag or two-finger drag to pan.</p>
       <button class="clean-btn" id="cleanBtn">Full-screen animation only</button>
@@ -133,7 +136,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
 
 <div class="hud hud-bottom">
   <p class="latch" id="latch" hidden><b id="latchTag">BREAK</b><span id="latchText"></span></p>
-  <p class="hint"><span id="patName">Pattern</span> <span class="ver">· v4</span></p>
+  <p class="hint"><span id="patName">Pattern</span> <span class="ver">· v5</span></p>
   <div class="bar">
     <button id="playBtn">Play</button>
     <button id="stepBtn">Step</button>
@@ -142,6 +145,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
       <input type="range" id="speed" min="50" max="750" step="50" value="100">
       <output id="speedOut" for="speed">100 ms</output>
     </label>
+    <button id="plugBtn">Unplug</button>
     <button id="camBtn">Free camera</button>
   </div>
 </div>
@@ -327,6 +331,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
   [-2.75, -2.45, 2.75].forEach(z => box(pcbR - pcbL, 0.02, 0.14, copper, (pcbL + pcbR) / 2, 0.13, z));
 
   const CX = SRC_X - 2.1, matrix = [];
+  let xlr = null, plugK = 0;
   let drawConsolePanel = () => {}, drawMark = () => {};
 
   const envTex = (() => {
@@ -393,7 +398,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
     btnCols.forEach((c, i) => box(0.18, 0.06, 0.18, std({ color: 0x20242c, emissive: c, emissiveIntensity: i % 3 === 1 ? 0.9 : 0.25 }), 1.2 + (i % 3) * 0.27, 0.03, -0.42 + Math.floor(i / 3) * 0.27, desk));
     [1.25, 1.7].forEach(x => { const k = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.14, 20), chrome); k.position.set(x, 0.07, 0.52); desk.add(k); });
     // XLR output where the line leaves the console
-    const xlr = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.2, 24), chrome); xlr.rotation.z = Math.PI / 2; xlr.position.set(SRC_X + 0.08, TY, 0); scene.add(xlr);
+    xlr = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.2, 24), chrome); xlr.rotation.z = Math.PI / 2; xlr.position.set(SRC_X + 0.08, TY, 0); scene.add(xlr);
     box(0.3, TY - 1.1, 0.5, body, SRC_X + 0.0, 1.1 + (TY - 1.1) / 2 - 0.3, 0);
 
     const PW = 3.8, PH = 1.9, PY = 2.62, c = document.createElement('canvas'); c.width = 760; c.height = 380;
@@ -511,7 +516,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
     g.beginPath(); g.arc(340, 30, 22, 0, Math.PI * 2); g.fillStyle = css(SEQ[i][colorIdx]); g.fill();
     g.lineWidth = 3; g.strokeStyle = '#8d9bb5'; g.setLineDash([7, 6]); g.stroke(); g.setLineDash([]);
     g.font = '500 28px ' + MONO; g.fillStyle = '#8d9bb5'; g.fillText('count ' + (n == null ? '---' : pad3(n)), 8, 74);
-    if (mine(i, n)) { g.fillStyle = '#5fe0a0'; g.fillText('· COPY ' + 'RGB'[n - addr(i)], 196, 74); }
+    if (!plugged) { g.fillStyle = '#e2574c'; g.fillText(blackout ? '· blackout' : '· no signal', 196, 74); }
+    else if (mine(i, n)) { g.fillStyle = '#5fe0a0'; g.fillText('· COPY ' + 'RGB'[n - addr(i)], 196, 74); }
     else if (n != null) { g.fillStyle = '#5c6a84'; g.fillText('· pass', 196, 74); }
     l.tex.needsUpdate = true;
   }
@@ -528,13 +534,14 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
     g.font = '600 34px ' + MONO; g.fillStyle = '#e6ecf7'; g.fillText('END OF LINE', 192, 30);
     g.font = '400 26px ' + MONO; g.fillStyle = '#8d9bb5'; g.fillText('120 Ω · slots in: ' + endCount + '/' + (NUM * CHN + 1), 192, 74); endLab.tex.needsUpdate = true;
   }
-  let flying = [], racked = [], sinking = [];
-  function clearMarbles() { flying.concat(racked, sinking).forEach(m => scene.remove(m.mesh)); flying = []; racked = []; sinking = []; }
+  let flying = [], racked = [], sinking = [], fading = [];
+  function clearMarbles() { flying.concat(racked, sinking, fading).forEach(m => scene.remove(m.mesh)); flying = []; racked = []; sinking = []; fading = []; }
+  function fadeOut(m, d) { m.fd = d; m.ft = 0; m.fs = m.mesh.scale.x; fading.push(m); }
 
   // ---------- sequencer state ----------
   // phases: 'loaded' (line idle HIGH) → 'break' (LOW) → 'mab' (HIGH) → 'send' → 'drain' → 'loaded' …
   let stream = [], cur = 0, cycle = 0, colorIdx = 0, running = false, packets = 0;
-  let phase = 'loaded', acc = 0, hold = 0, activeLed = -1, interval = 0.1, follow = true;
+  let phase = 'loaded', acc = 0, hold = 0, activeLed = -1, activeSlot = -1, interval = 0.1, follow = true, plugged = true, blackout = false;
   let history = [], dimK = 1, railK = 0, mabK = 0, scOk = 0;
   const DOME_OFF = new THREE.Color(0xd5dde8);
   const statusEl = $('status');
@@ -582,7 +589,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
     if (s.fx !== sn.fx || e.kind !== 'data') return;
     const mesh = new THREE.Mesh(mGeo, mMat[e.bit]); mesh.castShadow = true; mesh.position.set(sn.x, TY, 0); scene.add(mesh);
     flying.push({ mesh, e, fx: sn.fx, copy: true, td: (m.x - sn.x) / v, slot: slotPos(sn.fx, s.ch, e.k), px: sn.x });
-    activeLed = sn.fx;
+    // the rack keeps the last value until new data replaces it: the old marble in this slot fades as the new copy flies in
+    const old = racked.findIndex(r => r.fx === sn.fx && r.e.s.ch === s.ch && r.e.k === e.k);
+    if (old >= 0) fadeOut(racked.splice(old, 1)[0], Math.max(0.14, Math.min(0.45, interval * 1.2)) * 0.8);
+    // the camera follows the newest slot being copied, so overlapping copies further back never pull it to and fro
+    if (s.n >= activeSlot) { activeSlot = s.n; activeLed = sn.fx; }
     if (statusLock > 0) return;
     const name = sn.fx < 0 ? 'The start-code reader' : 'Fixture ' + (sn.fx + 1) + ' (DMX ' + pad3(addr(sn.fx)) + ')';
     setStatus(name + ' counts slot ' + s.n + (sn.fx < 0 ? '' : ' = its ' + CH[s.ch]) + ' and copies d' + e.k + ' = ' + e.bit + '. The marble itself rolls on down the line.');
@@ -607,15 +618,14 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
   // the key moment: BREAK. The line is pulled LOW for longer than any byte could be, so every receiver knows a new packet starts.
   function startBreak() {
     if (cur > 0) { newRow(cycle % 3); cycle++; colorIdx = cycle % 3; cur = 0; buildStream(); drawLabels(); }
-    phase = 'break'; hold = 0; activeLed = -1; scOk = 0; endCount = 0; drawEnd();
+    phase = 'break'; hold = 0; activeLed = -1; activeSlot = -1; scOk = 0; endCount = 0; drawEnd();
     sensors.forEach(sn => { sn.count = null; sn.keep = 0; }); drawLabels();
     history.push({ lv: 0, kind: 'break', t0: sclock, t1: null });
     banner('BREAK', 'Line held LOW for at least 88 µs (22 bit times). No byte can be that long, so every fixture resets its slot counter to 0.');
-    setStatus('BREAK: line LOW ≥ 88 µs. Every receiver resets its slot counter and empties its rack.', true);
+    setStatus('BREAK: line LOW ≥ 88 µs. Every receiver resets its slot counter. Racks keep the last values until new data replaces them.', true);
   }
   function startMab() {
     history[history.length - 1].t1 = sclock;
-    racked.forEach(m => scene.remove(m.mesh)); racked = [];
     phase = 'mab'; hold = 0;
     history.push({ lv: 1, kind: 'mab', t0: sclock, t1: null });
     banner('MARK AFTER BREAK', 'Line back HIGH for at least 8 µs. The next falling edge is the start bit of slot 0.', 'mab');
@@ -634,7 +644,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
   }
   function fullReset() {
     setRunning(false); clearMarbles(); latchEl.hidden = true; pIdx = 0; pStep = 0; for (let r = 0; r < 3; r++) newRow(r);
-    cycle = 0; cur = 0; colorIdx = 0; phase = 'loaded'; hold = 0; activeLed = -1; packets = 0; scOk = 0;
+    cycle = 0; cur = 0; colorIdx = 0; phase = 'loaded'; hold = 0; activeLed = -1; activeSlot = -1; packets = 0; scOk = 0; setPlug(true); blackout = false;
     history = []; sclock = 0; statusLock = 0; endCount = 0; sensors.forEach(sn => { sn.count = null; sn.keep = 0; }); buildStream(); drawLabels(); drawEnd(); drawScope();
     leds.forEach(L => { L.from.copy(L.cur); L.to.setRGB(0, 0, 0); L.t = 0; L.flash = 0; });
     setStatus(READY);
@@ -643,9 +653,32 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
   $('playBtn').addEventListener('click', () => setRunning(true));
   $('stepBtn').addEventListener('click', () => {
     if (running) { setRunning(false); return; }
-    if (phase === 'send') emit(0); else if (phase === 'loaded') startBreak();
+    if (phase === 'send') emit(0); else if (phase === 'loaded' && !flying.length) startBreak();
   });
   $('resetBtn').addEventListener('click', fullReset);
+  // Unplug: the console's output stops. Bits already on the cable still roll to the end, then nothing more comes.
+  // With no BREAK for longer than its timeout (often about 1 s, shown slowed down here) a fixture treats the signal as lost
+  // and falls to black. Many fixtures can be set to hold the last look instead; black is the usual default.
+  const LOSS_T = 3.0;
+  function setPlug(v) { plugged = v; const b = $('plugBtn'); b.textContent = v ? 'Unplug' : 'Plug in'; b.classList.toggle('out', !v); }
+  $('plugBtn').addEventListener('click', () => {
+    if (plugged) {
+      setPlug(false); latchEl.hidden = true; blackout = false; hold = 0; phase = 'unplugged';
+      const last = history[history.length - 1]; if (last && last.t1 === null) last.t1 = sclock;   // a break or MAB cut short
+      setStatus('Cable unplugged. No more breaks or slots will arrive. The fixtures hold their last values for now…', true);
+    } else {
+      setPlug(true); phase = 'loaded'; hold = 0;
+      setStatus(blackout ? 'Plugged back in. The next BREAK starts a fresh packet and the fixtures wake up as their slots arrive.' : 'Plugged back in before the timeout. The fixtures never lost their look.');
+    }
+    drawLabels();
+  });
+  function goBlack() {
+    blackout = true;
+    racked.forEach(m => fadeOut(m, 0.8)); racked = [];
+    leds.forEach(L => { L.from.copy(L.cur); L.to.setRGB(0, 0, 0); L.t = 0; L.flash = 0; });
+    sensors.forEach(sn => { sn.count = null; sn.keep = 0; }); scOk = 0; drawLabels();
+    setStatus('No DMX for longer than the timeout (often about 1 s; slowed down here). Every fixture drops its values and falls to black. Plug in to bring them back.', true);
+  }
 
   (() => {
     const box = $('readout'), btn = $('infoBtn'); let timer = null;
@@ -670,7 +703,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('clean')) setClean(false); });
   })();
   $('speed').addEventListener('input', (e) => { interval = +e.target.value / 1000; $('speedOut').textContent = e.target.value + ' ms'; });
-  function setFollow(v) { follow = v; $('camBtn').textContent = v ? 'Free camera' : 'Follow'; }
+  function setFollow(v) { follow = v; camV = 0; $('camBtn').textContent = v ? 'Free camera' : 'Follow'; }
   $('camBtn').addEventListener('click', () => setFollow(!follow));
   renderer.domElement.addEventListener('pointerdown', (e) => { if (e.button === 2) setFollow(false); });
   renderer.domElement.addEventListener('touchstart', (e) => { if (e.touches.length === 2) setFollow(false); }, { passive: true });
@@ -725,6 +758,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
       note = last.kind === 'break' ? 'BREAK: LOW ≥ 88 µs' : last.kind === 'mab' ? 'mark after break: HIGH ≥ 8 µs'
         : last.kind === 'start' ? 'start bit: 4 µs LOW' : last.kind === 'stop' ? 'stop bit: 4 µs HIGH' : 'data d' + last.k + ' = ' + last.lv + ': 4 µs ' + (last.lv ? 'HIGH' : 'LOW');
     } else if (last && phase === 'send') note = '250 kbit/s · 4 µs per bit';
+    if (!plugged) note = 'no signal: cable unplugged';
     const ne = $('scopeNote'); if (ne.textContent !== note) ne.textContent = note;
   }
 
@@ -765,6 +799,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
   resize();
   baseDist = 15.5 * Math.max(1, 0.85 / camera.aspect);
   const camX = () => activeLed < 0 ? SC_X - 1.6 : ledX(activeLed);
+  // critically damped spring with a speed cap: eases in and out, even for the long trip back to the first fixture
+  let camV = 0;
+  function smoothX(cur, target, dt) {
+    if (dt <= 0) return cur;
+    const T = 0.9, maxSpeed = 11, w = 2 / T, x = w * dt, ex = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+    const lim = maxSpeed * T, change = Math.max(-lim, Math.min(lim, cur - target)), tgt = cur - change;
+    const tmpV = (camV + w * change) * dt; camV = (camV - w * tmpV) * ex;
+    let out = tgt + (change + tmpV) * ex;
+    if ((target - cur > 0) === (out > target)) { out = target; camV = 0; }
+    return out;
+  }
   controls.target.set(camX(), 1.3, 0);
   camera.position.copy(controls.target).add(new THREE.Vector3(-0.3, 0.52, 0.8).normalize().multiplyScalar(baseDist));
   new ResizeObserver(resize).observe(stage);
@@ -803,27 +848,33 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
       if (u >= 1) { scene.remove(m.mesh); sinking.splice(i, 1); }
     }
 
+    for (let i = fading.length - 1; i >= 0; i--) {
+      const m = fading[i]; m.ft += dt; const u = Math.min(1, m.ft / m.fd);
+      m.mesh.scale.setScalar(m.fs * (1 - u)); if (u >= 1) { scene.remove(m.mesh); fading.splice(i, 1); }
+    }
+    plugK += ((plugged ? 0 : 1) - plugK) * Math.min(1, dt * 6);
+    xlr.position.x = SRC_X + 0.08 + 0.7 * plugK; xlr.position.y = TY - 0.25 * plugK;
+
     if (running || phase === 'break' || phase === 'mab') sclock += dt / interval;
     if (statusLock > 0) statusLock -= dt;
     if (phase === 'send') { if (running) { acc += dt; if (acc >= interval) { acc -= interval; if (acc > interval) acc = 0; emit(acc); } } }
     else if (phase === 'drain') {
       if (!flying.length) { phase = 'loaded'; hold = 0; statusLock = 0; setStatus('Packet complete. The line idles HIGH (mark) until the next BREAK.'); }
     }
-    else if (phase === 'loaded') { if (running) { hold += dt; if (hold >= 0.6) startBreak(); } }
+    else if (phase === 'loaded') { if (running && !flying.length) { hold += dt; if (hold >= 0.6) startBreak(); } }
+    else if (phase === 'unplugged') { hold += dt; if (!blackout && hold >= LOSS_T && !flying.length) goBlack(); }
     else if (phase === 'break') {
       hold += dt;
-      const k = 1 - ease(Math.min(1, Math.max(0, (hold - 1.0) / 0.9)));
-      racked.forEach(m => m.mesh.scale.setScalar(0.73 * k));
       if (hold >= 2.8) startMab();
     }
     else if (phase === 'mab') { hold += dt; if (hold >= 1.0) endMab(); }
 
     // dim the room for the break so the fixtures read clearly
-    const dimT = phase === 'break' ? 0.3 : phase === 'mab' ? 0.6 : 1;
+    const dimT = phase === 'break' ? 0.3 : phase === 'mab' ? 0.6 : blackout ? 0.55 : 1;
     dimK += (dimT - dimK) * Math.min(1, dt * 5); hemi.intensity = 0.3 * dimK; sun.intensity = 0.5 * dimK;
 
     // rails: black while LOW (break), glowing while HIGH after it (MAB)
-    railK += ((phase === 'break' ? 1 : 0) - railK) * Math.min(1, dt * 6);
+    railK += ((phase === 'break' ? 1 : !plugged && !flying.length ? 0.55 : 0) - railK) * Math.min(1, dt * 6);
     mabK += ((phase === 'mab' ? 1 : 0) - mabK) * Math.min(1, dt * 8);
     railMat.color.setScalar(1 - 0.97 * railK); railMat.envMapIntensity = 1.25 * (1 - 0.92 * railK);
     railMat.emissive.setRGB(0.55 * mabK, 0.6 * mabK, 0.65 * mabK);
@@ -847,7 +898,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
     });
 
     leds.forEach(L => {
-      if (L.t < 1) { L.t = Math.min(1, L.t + dt / 0.5); L.cur.copy(L.from).lerp(L.to, ease(L.t)); }
+      if (L.t < 1) { L.t = Math.min(1, L.t + dt / (blackout ? 1.4 : 0.5)); L.cur.copy(L.from).lerp(L.to, ease(L.t)); }
       L.flash = Math.max(0, L.flash - dt * 1.6);
       const k = Math.max(L.cur.r, L.cur.g, L.cur.b) > 0.001 ? 1 : 0, f = 1 + L.flash * 0.9;
       L.domeMat.color.copy(DOME_OFF).lerp(L.cur, k * 0.9); L.domeMat.emissive.copy(L.cur); L.domeMat.emissiveIntensity = 1.5 * f;
@@ -857,8 +908,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
     });
 
     if (follow) {
-      const tx = camX(), a = Math.min(1, dt * 2.6);
-      tmp.set(tx - controls.target.x, 1.3 - controls.target.y, -controls.target.z).multiplyScalar(a); controls.target.add(tmp); camera.position.add(tmp);
+      const a = Math.min(1, dt * 2.6), nx = smoothX(controls.target.x, camX(), dt);
+      tmp.set(nx - controls.target.x, (1.3 - controls.target.y) * a, -controls.target.z * a); controls.target.add(tmp); camera.position.add(tmp);
     }
     controls.update();
   }
