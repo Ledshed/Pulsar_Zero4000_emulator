@@ -113,7 +113,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
     <div class="intro" id="intro">
       <h1>DMX512 slot stream</h1>
       <p class="sub">One RS-485 line, 250,000 bits a second, six RGB fixtures. Every packet opens with a <b>BREAK</b> (line LOW) and a <b>mark after break</b> (HIGH), then a start code and one slot per channel. Each slot is 11 marbles: a start bit, 8 data bits sent lowest bit first, and 2 stop bits.</p>
-      <p class="sub"><b>Not like WS2812:</b> an addressable LED takes its bits off the line and blocks them, so data stops at the first LED that is not yet full. A DMX fixture takes nothing. Every slot rolls past every fixture to the end of the cable. Each fixture counts the slots going by and copies the three at its address, and the stream is never interrupted.</p>
+      <p class="sub"><b>Not like WS2812:</b> an addressable LED takes its bits off the line and blocks them, so data stops at the first LED that is not yet full. A DMX fixture takes nothing. Every slot rolls past every fixture to the end of the cable. Each fixture counts the slots going by and copies the three at its address, and the stream is never interrupted. That is also why addresses need not follow the cable: the first fixture here is set to DMX 016, so it fills last.</p>
       <p class="sub"><b>Scope:</b> drag the panel to move it. Drag the grip on its right edge to stretch it and see more waveform history.</p>
       <p class="sub"><b>Camera:</b> drag to orbit, scroll or pinch to zoom, right-drag or two-finger drag to pan.</p>
       <button class="clean-btn" id="cleanBtn">Full-screen animation only</button>
@@ -133,7 +133,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
 
 <div class="hud hud-bottom">
   <p class="latch" id="latch" hidden><b id="latchTag">BREAK</b><span id="latchText"></span></p>
-  <p class="hint"><span id="patName">Pattern</span> <span class="ver">· v3</span></p>
+  <p class="hint"><span id="patName">Pattern</span> <span class="ver">· v4</span></p>
   <div class="bar">
     <button id="playBtn">Play</button>
     <button id="stepBtn">Step</button>
@@ -166,7 +166,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
   // Packet: BREAK (>= 88 µs LOW), MARK AFTER BREAK (>= 8 µs HIGH), start code slot (0x00 = dimmer data), then slots 1..512.
   // Every slot: 1 start bit (LOW), 8 data bits LSB first, 2 stop bits (HIGH).
   const NUM = 6, CHN = 3, SLOT_BITS = 11;
-  const addr = (i) => 1 + i * CHN;                     // fixture i listens to slots addr..addr+2 (R, G, B)
+  // start address set on each fixture, in cable order. The first fixture on the cable is set to 016:
+  // addresses do not have to follow the cable, because every fixture sees every slot.
+  const ADDR = [16, 1, 4, 7, 10, 13];
+  const addr = (i) => ADDR[i];                         // fixture i listens to slots addr..addr+2 (R, G, B)
   const pad3 = (n) => String(n).padStart(3, '0');
   const CH = ['RED', 'GREEN', 'BLUE'];
 
@@ -536,12 +539,13 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
   const DOME_OFF = new THREE.Color(0xd5dde8);
   const statusEl = $('status');
   function setStatus(t, isReset) { statusEl.textContent = t; statusEl.classList.toggle('reset', !!isReset); }
-  const READY = 'Ready. Six RGB fixtures at DMX 001, 004 … 016. Each slot is 11 bits: start, 8 data (LSB first), 2 stops.';
+  const READY = 'Ready. Six RGB fixtures; the first on the cable is set to DMX 016. Each slot is 11 bits: start, 8 data (LSB first), 2 stops.';
   // one entry per bit on the wire, in order: start code slot, then R, G, B for each fixture
   function buildStream() {
     stream = [];
     const slots = [{ v: 0, fx: -1, ch: 0, n: 0 }];
     for (let i = 0; i < NUM; i++) { const c = SEQ[i][colorIdx]; [c.r, c.g, c.b].forEach((v, ch) => slots.push({ v, fx: i, ch, n: addr(i) + ch })); }
+    slots.sort((a, b) => a.n - b.n);               // the console always sends slots in number order, wherever the fixtures sit
     slots.forEach(s => {
       stream.push({ bit: 0, kind: 'start', s });
       for (let k = 0; k < 8; k++) stream.push({ bit: (s.v >> k) & 1, kind: 'data', k, s });
@@ -834,10 +838,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
 
     // console preview matrix: sent = pale lens, sending = blinking, still to come = lit
     const blink = 0.55 + 0.45 * Math.sin(performance.now() / 110);
-    const dataDone = Math.max(0, Math.floor(cur / SLOT_BITS) - 1), sentFx = Math.floor(dataDone / CHN), sendingNow = cur > SLOT_BITS && cur < stream.length;
+    // slots go out in number order, so a column is sent once its last slot has gone, whatever its place on the cable
+    const dataDone = Math.max(0, Math.floor(cur / SLOT_BITS) - 1), curSlot = cur > 0 && cur < stream.length ? Math.floor((cur - 1) / SLOT_BITS) : -1;
     matrix.forEach(d => {
       let k = 0.85;
-      if (d.r === cycle % 3 && cur > 0) k = d.col < sentFx ? 0 : (d.col === sentFx && sendingNow ? blink : 1);
+      if (d.r === cycle % 3 && cur > 0) { const a = addr(d.col); k = a + CHN - 1 <= dataDone ? 0 : (curSlot >= a && curSlot < a + CHN ? blink : 1); }
       const off = Math.max(0, 1 - k * 5); d.m.emissive.copy(d.c).multiplyScalar(k).addScalar(0.16 * off); d.m.color.setScalar(Math.max(0.03, off)); d.m.opacity = 0.5 + 0.5 * Math.min(1, k * 4);
     });
 
