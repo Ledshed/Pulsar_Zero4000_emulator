@@ -133,7 +133,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
 
 <div class="hud hud-bottom">
   <p class="latch" id="latch" hidden><b id="latchTag">BREAK</b><span id="latchText"></span></p>
-  <p class="hint"><span id="patName">Pattern</span> <span class="ver">· v2</span></p>
+  <p class="hint"><span id="patName">Pattern</span> <span class="ver">· v3</span></p>
   <div class="bar">
     <button id="playBtn">Play</button>
     <button id="stepBtn">Step</button>
@@ -592,7 +592,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
     } else if (s.ch === CHN - 1) {
       const v = [0, 0, 0];
       racked.forEach(r => { if (r.fx === s.fx) v[r.e.s.ch] |= r.e.bit << r.e.k; });
-      if (s.fx === 2 && latchEl.classList.contains('info')) latchEl.hidden = true;
       const L = leds[s.fx]; L.from.copy(L.cur); L.to.setRGB(v[0] / 255, v[1] / 255, v[2] / 255).convertSRGBToLinear(); L.t = 0; L.flash = 1;
       statusLock = 1.1;
       setStatus('Fixture ' + (s.fx + 1) + ' has its 3 channels (R ' + v[0] + ', G ' + v[1] + ', B ' + v[2] + ') and changes colour now. Its counter keeps counting the slots that roll past.');
@@ -621,7 +620,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
   function endMab() {
     history[history.length - 1].t1 = sclock;
     latchEl.hidden = true; packets++;
-    banner('NOT LIKE WS2812', 'Nothing leaves the line. Every slot rolls past every fixture to the end of the cable; each fixture counts them and copies only its own three.', 'info');
     phase = 'send'; acc = interval;
     setStatus('Packet ' + packets + ': sending the start code, then slots 1–' + NUM * CHN + '.');
   }
