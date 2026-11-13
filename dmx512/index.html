@@ -88,14 +88,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
 @media (max-width: 640px) {
   .bar { gap: 5px; padding: 6px; }
   .bar button { font-size: 11px; padding: 8px 7px; min-width: 0; }
-  #camBtn { min-width: 86px; }
-  #plugBtn { min-width: 64px; }
+  #camBtn { min-width: 58px; }
+  #plugBtn { min-width: 58px; }
+  #playBtn, #stepBtn, #resetBtn { min-width: 34px; }
+  .bar .bl { display: none; } .bar .bs { display: inline; }
   .speed { gap: 5px; padding: 0; font-size: 11px; }
   .speed-name { display: none; }
   .speed output { min-width: 42px; }
 }
 .speed { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); padding: 0 6px; }
 .speed input { width: 110px; accent-color: var(--phosphor); }
+.bs { display: none; }
 .speed output { color: var(--ink); min-width: 52px; font-variant-numeric: tabular-nums; }
 .latch { margin: 0; max-width: 560px; padding: 10px 14px; background: var(--panel); border: 1px solid var(--copper); border-radius: 4px; font-size: 13px; line-height: 1.4; text-align: center; pointer-events: none; }
 .latch b { color: var(--copper); margin-right: 6px; letter-spacing: 0.08em; }
@@ -136,17 +139,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
 
 <div class="hud hud-bottom">
   <p class="latch" id="latch" hidden><b id="latchTag">BREAK</b><span id="latchText"></span></p>
-  <p class="hint"><span id="patName">Pattern</span> <span class="ver">· v5</span></p>
+  <p class="hint"><span id="patName">Pattern</span> <span class="ver">· v6</span></p>
   <div class="bar">
-    <button id="playBtn">Play</button>
-    <button id="stepBtn">Step</button>
-    <button id="resetBtn">Reset</button>
+    <button id="playBtn" aria-label="Play"><span class="bl">Play</span><span class="bs" aria-hidden="true">▶</span></button>
+    <button id="stepBtn" aria-label="Step"><span class="bl">Step</span><span class="bs" aria-hidden="true">Step</span></button>
+    <button id="resetBtn" aria-label="Reset"><span class="bl">Reset</span><span class="bs" aria-hidden="true">↺</span></button>
     <label class="speed" for="speed"><span class="speed-name">Bit interval</span>
       <input type="range" id="speed" min="50" max="750" step="50" value="100">
       <output id="speedOut" for="speed">100 ms</output>
     </label>
-    <button id="plugBtn">Unplug</button>
-    <button id="camBtn">Free camera</button>
+    <button id="plugBtn" aria-label="Unplug"><span class="bl">Unplug</span><span class="bs" aria-hidden="true">Unplug</span></button>
+    <button id="camBtn" aria-label="Free camera"><span class="bl">Free camera</span><span class="bs" aria-hidden="true">Free</span></button>
   </div>
 </div>
 
@@ -638,9 +641,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
     setStatus('Packet ' + packets + ': sending the start code, then slots 1–' + NUM * CHN + '.');
   }
 
+  function setLabel(id, long, short) { const b = $(id); b.setAttribute('aria-label', long); b.querySelector('.bl').textContent = long; b.querySelector('.bs').textContent = short; }
   function setRunning(v) {
     running = v; acc = interval;
-    $('playBtn').disabled = v; $('stepBtn').textContent = v ? 'Pause' : 'Step';
+    $('playBtn').disabled = v; setLabel('stepBtn', v ? 'Pause' : 'Step', v ? '❚❚' : 'Step');
   }
   function fullReset() {
     setRunning(false); clearMarbles(); latchEl.hidden = true; pIdx = 0; pStep = 0; for (let r = 0; r < 3; r++) newRow(r);
@@ -660,7 +664,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
   // With no BREAK for longer than its timeout (often about 1 s, shown slowed down here) a fixture treats the signal as lost
   // and falls to black. Many fixtures can be set to hold the last look instead; black is the usual default.
   const LOSS_T = 3.0;
-  function setPlug(v) { plugged = v; const b = $('plugBtn'); b.textContent = v ? 'Unplug' : 'Plug in'; b.classList.toggle('out', !v); }
+  function setPlug(v) { plugged = v; const b = $('plugBtn'); setLabel('plugBtn', v ? 'Unplug' : 'Plug in', v ? 'Unplug' : 'Plug'); b.classList.toggle('out', !v); }
   $('plugBtn').addEventListener('click', () => {
     if (plugged) {
       setPlug(false); latchEl.hidden = true; blackout = false; hold = 0; phase = 'unplugged';
@@ -703,7 +707,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('clean')) setClean(false); });
   })();
   $('speed').addEventListener('input', (e) => { interval = +e.target.value / 1000; $('speedOut').textContent = e.target.value + ' ms'; });
-  function setFollow(v) { follow = v; camV = 0; $('camBtn').textContent = v ? 'Free camera' : 'Follow'; }
+  function setFollow(v) { follow = v; camV = 0; setLabel('camBtn', v ? 'Free camera' : 'Follow', v ? 'Free' : 'Follow'); }
   $('camBtn').addEventListener('click', () => setFollow(!follow));
   renderer.domElement.addEventListener('pointerdown', (e) => { if (e.button === 2) setFollow(false); });
   renderer.domElement.addEventListener('touchstart', (e) => { if (e.touches.length === 2) setFollow(false); }, { passive: true });
