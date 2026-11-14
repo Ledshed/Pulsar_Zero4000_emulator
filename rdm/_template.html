@@ -1,0 +1,993 @@
+{{CSS}}
+/* ---- RDM page additions ---- */
+.hint.chap { pointer-events: auto; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.chap button { min-width: 0; padding: 3px 11px; font-size: 13px; line-height: 1.2; }
+#chName { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.fields { display: flex; flex-wrap: wrap; gap: 3px 10px; margin-top: 5px; font-size: 11px; color: var(--muted); }
+.fields i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.legend .cap { width: 18px; border-radius: 4px; background: linear-gradient(90deg, #c98a35 0 14%, #f4f4f0 14% 36%, #07080b 36% 50%, #f4f4f0 50% 72%, #07080b 72% 86%, #c98a35 86%); }
+.latch.info { border-color: var(--phosphor); } .latch.info b { color: var(--phosphor); }
+.latch.bad { border-color: var(--stop); } .latch.bad b { color: var(--stop); }
+</style>
+
+<div id="stage"></div>
+<button class="exit-clean" id="exitClean" hidden aria-label="Show text, scope and controls again" title="Show text, scope and controls">✕</button>
+
+<div class="hud hud-top">
+  <div class="readout" id="readout">
+    <div class="intro" id="intro">
+      <h1>RDM: the cable talks back</h1>
+      <p class="sub">RDM (Remote Device Management, ANSI E1.20) runs on the same two DMX wires. The console slips RDM packets, start code <b>0xCC</b>, in between ordinary DMX packets. It addresses one fixture at a time by its 48-bit <b>UID</b>, then lets go of the line so that fixture can answer.</p>
+      <p class="sub">Five scenes play in a loop; use ‹ › above the controls to jump between them. The start code still rolls as single marbles. After that each glass <b>capsule</b> is one byte, its 8 bits shown as rings with copper caps for the start and stop bits. In scenes 4 and 5 each long tube is a whole packet.</p>
+      <p class="sub"><b>Scope:</b> drag the panel to move it. Drag the grip on its right edge to stretch it and see more history.</p>
+      <p class="sub"><b>Camera:</b> drag to orbit, scroll or pinch to zoom, right-drag or two-finger drag to pan.</p>
+      <button class="clean-btn" id="cleanBtn">Full-screen animation only</button>
+    </div>
+    <div class="status-row">
+      <button class="info-btn" id="infoBtn" aria-expanded="true" aria-controls="intro" aria-label="Show or hide the title and explanation" title="About this animation">i</button>
+      <p class="status" id="status" aria-live="polite">Ready.</p>
+    </div>
+  </div>
+  <div class="scope">
+    <div class="scope-head"><span title="Drag to move">Scope</span><b id="scopeNote">idle</b></div>
+    <canvas id="scope"></canvas>
+    <div class="scope-grip" id="scopeGrip" title="Drag to stretch" role="separator" aria-orientation="vertical" aria-label="Stretch the scope"></div>
+    <div class="legend"><span><i class="one"></i>1</span><span><i class="zero"></i>0</span><span><i class="fr"></i>start / stop</span><span><i class="cap"></i>one byte</span></div>
+    <div class="fields"><span><i style="background:#e8a13c"></i>header</span><span><i style="background:#5aa2f5"></i>to UID</span><span><i style="background:#b48cf2"></i>from UID</span><span><i style="background:#f2c94c"></i>command</span><span><i style="background:#5fe0a0"></i>data</span><span><i style="background:#e6ecf7"></i>checksum</span></div>
+  </div>
+</div>
+
+<div class="hud hud-bottom">
+  <p class="latch" id="latch" hidden><b id="latchTag"></b><span id="latchText"></span></p>
+  <p class="hint chap"><button id="prevCh" aria-label="Previous scene">‹</button><span id="chName">1/5</span><button id="nextCh" aria-label="Next scene">›</button><span class="ver">v1</span></p>
+  <div class="bar">
+    <button id="playBtn" aria-label="Play"><span class="bl">Play</span><span class="bs" aria-hidden="true">▶</span></button>
+    <button id="stepBtn" aria-label="Step"><span class="bl">Step</span><span class="bs" aria-hidden="true">Step</span></button>
+    <button id="resetBtn" aria-label="Reset"><span class="bl">Reset</span><span class="bs" aria-hidden="true">↺</span></button>
+    <label class="speed" for="speed"><span class="speed-name">Bit interval</span>
+      <input type="range" id="speed" min="50" max="750" step="50" value="100">
+      <output id="speedOut" for="speed">100 ms</output>
+    </label>
+    <button id="camBtn" aria-label="Free camera"><span class="bl">Free camera</span><span class="bs" aria-hidden="true">Free</span></button>
+  </div>
+</div>
+
+<script src="lib/three.min.js"></script>
+<script src="lib/OrbitControls.js"></script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const stage = $('stage');
+  function fail(msg) { const d = document.createElement('div'); d.className = 'fail'; d.textContent = msg; stage.textContent = ''; stage.appendChild(d); }
+  window.addEventListener('error', (e) => {
+    const el = document.getElementById('status'); if (!el) return;
+    el.classList.add('reset'); el.textContent = 'Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '');
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    if (e.reason && e.reason.message === 'abort') { e.preventDefault(); return; }
+    const el = document.getElementById('status'); if (el) { el.classList.add('reset'); el.textContent = 'Error: ' + (e.reason && e.reason.message || e.reason); }
+  });
+  const LITE = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || Math.min(window.innerWidth, window.innerHeight) < 500;
+  if (!window.THREE || !THREE.OrbitControls) { fail('The 3D library did not load (' + (window.THREE ? 'camera controls' : 'three.js') + ' missing). Check your connection and reload.'); return; }
+
+  // ---------- the rig ----------
+  // UIDs use the ESTA prototype manufacturer range 7FF0–7FFF, so no real maker is implied.
+  const NUM = 6, CHN = 3;
+  const U = (m, d) => m * 4294967296 + d;
+  const hex = (n, w) => n.toString(16).toUpperCase().padStart(w, '0');
+  const pad3 = (n) => String(n).padStart(3, '0');
+  const uidStr = (u) => hex(Math.floor(u / 4294967296), 4) + ':' + hex(u % 4294967296, 8);
+  const uidBytes = (u) => { const m = Math.floor(u / 4294967296), d = u % 4294967296; return [m >> 8, m & 255, (d >>> 24) & 255, (d >>> 16) & 255, (d >>> 8) & 255, d & 255]; };
+  // plan = the address on the rig plan; addr = what the fixture is actually set to. Fixture 1 starts on 004 by mistake.
+  const FIX = [
+    { plan: 16, addr: 4, uid: U(0x7FF4, 0x9E771203), model: 0x0101 },
+    { plan: 1, addr: 1, uid: U(0x7FF1, 0x0A235C10), model: 0x0204 },
+    { plan: 4, addr: 4, uid: U(0x7FF4, 0x1B000042), model: 0x0101 },
+    { plan: 7, addr: 7, uid: null },
+    { plan: 10, addr: 10, uid: U(0x7FFA, 0x00002C9A), model: 0x0310 },
+    { plan: 13, addr: 13, uid: U(0x7FFD, 0x551000F1), model: 0x0402 }
+  ];
+  const CTRL_UID = U(0x7FF0, 0xC0000001), BCAST = U(0xFFFF, 0xFFFFFFFF);
+  const CC = { DISC: 0x10, GET: 0x20, SET: 0x30 };
+  const PID = { DUB: 0x0001, MUTE: 0x0002, UNMUTE: 0x0003, DEVICE_INFO: 0x0060, DMX_START_ADDRESS: 0x00F0, IDENTIFY_DEVICE: 0x1000 };
+  // a real RDM packet: start code, sub start code, length, destination UID, source UID, transaction, port / response type,
+  // message count, sub-device, command class, parameter ID, parameter data length, data, 16-bit additive checksum
+  let tn = 0;
+  function rdm(dst, src, cc, pid, pd, portOrResp, txn) {
+    pd = pd || [];
+    const b = [0xCC, 0x01, 24 + pd.length].concat(uidBytes(dst), uidBytes(src), [txn, portOrResp, 0, 0, 0, cc, pid >> 8, pid & 255, pd.length], pd);
+    const sum = b.reduce((a, v) => a + v, 0) & 0xFFFF; b.push(sum >> 8, sum & 255);
+    const fields = b.map((_, i) => i < 3 ? 'hdr' : i < 9 ? 'dst' : i < 15 ? 'src' : i < 20 ? 'misc' : i < 23 ? 'cmd' : i < b.length - 2 ? 'pd' : 'sum');
+    return { bytes: b, fields, dst, src, cc, pid };
+  }
+  const request = (dst, cc, pid, pd) => rdm(dst, CTRL_UID, cc, pid, pd, 1, (tn = (tn + 1) & 255));
+  const reply = (req, src, pd) => rdm(req.src, src, req.cc + 1, req.pid, pd, 0, req.bytes[15]);   // response type 0x00 = ACK
+  // DEVICE_INFO: protocol 1.0, model, category (fixed fixture), software version, footprint, personality, start address, sub-devices, sensors
+  const deviceInfo = (f) => [0x01, 0x00, f.model >> 8, f.model & 255, 0x01, 0x01, 0, 0, 1, 2, 0, CHN, 1, 1, f.addr >> 8, f.addr & 255, 0, 0, 0];
+
+  // ---------- patterns (the same list as the DMX page) ----------
+{{PATTERNS}}
+  let pIdx = 0, pStep = 0;
+  function nextFrame() {
+    const p = PATTERNS[pIdx], cols = []; for (let i = 0; i < NUM; i++) cols.push(p.fn(pStep, i));
+    const meta = { name: p.name, n: pIdx + 1, step: pStep + 1, len: p.len };
+    if (++pStep >= p.len) { pStep = 0; pIdx = (pIdx + 1) % PATTERNS.length; }
+    return { cols, meta };
+  }
+
+  // ---------- renderer / scene ----------
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({ antialias: true }); }
+  catch (e) { fail('WebGL is not available in this browser, so the 3D scene cannot be drawn.'); return; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, LITE ? 1.5 : 2));
+  renderer.domElement.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault(); const el = document.getElementById('status');
+    el.classList.add('reset'); el.textContent = 'The 3D view ran out of graphics memory. Reload the page to restart it.';
+  });
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  stage.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0c1424);
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 600);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.dampingFactor = 0.08;
+  controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 5; controls.maxDistance = 220;
+  const hemi = new THREE.HemisphereLight(0xbfd0ff, 0x10182a, 0.3); scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xffffff, 0.5);
+  sun.position.set(-8, 22, 14); sun.castShadow = true;
+  sun.shadow.mapSize.set(LITE ? 1024 : 2048, LITE ? 1024 : 2048);
+  Object.assign(sun.shadow.camera, { left: -28, right: 24, top: 12, bottom: -12, near: 1, far: 60 });
+  sun.shadow.bias = -0.0005;
+  scene.add(sun);
+
+  // ---------- geometry ----------
+  const SP = 5.2, TY = 3.0, R = 0.26, SLOT_Y = 0.56, SRC_X = -21.0;
+  const CAP_Y = TY - 0.055, TUBE_Y = TY - 0.04;
+  const ledX = (i) => (i - (NUM - 1) / 2) * SP;
+  const SC_X = ledX(0) - 4.6;
+  const scSlotPos = (k) => new THREE.Vector3(SC_X + ((7 - k) - 3.5) * 0.46, SLOT_Y, 0.55);
+  const cradlePos = (i, ch) => new THREE.Vector3(ledX(i) + 0.15, 0.66, 0.55 + ch * 0.56);
+  const std = (o) => new THREE.MeshStandardMaterial(o);
+  function box(w, h, d, mat, x, y, z, parent) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; (parent || scene).add(m); return m;
+  }
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), std({ color: 0x0a1120, roughness: 0.95 }));
+  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; ground.position.y = -11.4; scene.add(ground);
+{{BENCH}}
+  const pcbMat = std({ color: 0x14181f, roughness: 0.6 });
+  const copper = std({ color: 0xc98a35, roughness: 0.35, metalness: 0.8 });
+  const pcbL = SC_X - 2.9, pcbR = ledX(NUM - 1) + 3.4;
+  box(pcbR - pcbL, 0.12, 6, pcbMat, (pcbL + pcbR) / 2, 0.06, 0);
+  [-2.75, -2.45, 2.75].forEach(z => box(pcbR - pcbL, 0.02, 0.14, copper, (pcbL + pcbR) / 2, 0.13, z));
+  const CX = SRC_X - 2.1;
+{{ENV}}
+  const copperCap = std({ color: 0xc98a35, roughness: 0.3, metalness: 0.8, envMap: envTex, envMapIntensity: 0.8 });
+
+  // rails: the DMX / RDM pair. Black while held LOW (break), white while HIGH after it, amber while a fixture is driving.
+  const railMat = chrome.clone();
+  const RAIL_Z = 0.17, RAIL_R = 0.055, RAIL_Y = TY - Math.sqrt(Math.pow(R + RAIL_R, 2) - RAIL_Z * RAIL_Z);
+  const railLen = ledX(NUM - 1) + 3.0 - SRC_X, railMid = SRC_X + railLen / 2;
+  [-RAIL_Z, RAIL_Z].forEach(z => {
+    const r = new THREE.Mesh(new THREE.CylinderGeometry(RAIL_R, RAIL_R, railLen, 14), railMat);
+    r.rotation.z = Math.PI / 2; r.position.set(railMid, RAIL_Y, z); r.castShadow = true; scene.add(r);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(RAIL_R * 1.6, 14, 10), railMat); cap.position.set(SRC_X + railLen, RAIL_Y, z); scene.add(cap);
+  });
+  const tieGeo = new THREE.TorusGeometry(RAIL_Z, 0.028, 8, 18, Math.PI);
+  for (let x = SRC_X + 0.6; x < SRC_X + railLen; x += 1.3) {
+    const t = new THREE.Mesh(tieGeo, railMat); t.rotation.set(Math.PI, Math.PI / 2, 0); t.position.set(x, RAIL_Y, 0); scene.add(t);
+  }
+  // end of line: bin and terminator. Start of line: an inbox where replies from the fixtures land.
+  const END_X = SRC_X + railLen, BIN = new THREE.Vector3(END_X + 1.1, 0.45, 0);
+  const INBOX_X = SRC_X + 1.1, INBOX = new THREE.Vector3(SRC_X + 0.9, 0.45, -1.35);
+  function addBin(p, r) {
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.78, 0.5, 32, 1, true), chrome); b.position.set(p.x, 0.37, p.z); b.castShadow = true; scene.add(b);
+    const bot = new THREE.Mesh(new THREE.CircleGeometry(r * 0.8, 24), std({ color: 0x050608, roughness: 0.9 })); bot.rotation.x = -Math.PI / 2; bot.position.set(p.x, 0.14, p.z); scene.add(bot);
+  }
+  addBin(BIN, 0.62); addBin(INBOX, 0.62);
+  box(0.55, 0.45, 0.55, std({ color: 0x1b1f27, roughness: 0.5 }), END_X + 0.1, 0.34, -1.0);
+  box(0.57, 0.06, 0.57, copper, END_X + 0.1, 0.6, -1.0);
+  const postXs = [SC_X - 2.9, SC_X + 2.3];
+  for (let i = 1; i < NUM; i++) postXs.push(ledX(i) - SP / 2 + 0.05);
+  postXs.push(END_X - 0.1);
+  postXs.forEach(px => {
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, RAIL_Y - 0.1, 10), chrome);
+    p.position.set(px, (RAIL_Y - 0.1) / 2 + 0.1, 0); p.castShadow = true; scene.add(p);
+  });
+
+  // ---------- text helpers ----------
+  const MONO = "'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace";
+  function makeLabel(w, h, sx, sy) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const tex = new THREE.CanvasTexture(c);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+    sp.scale.set(sx, sy, 1);
+    return { sprite: sp, ctx: c.getContext('2d'), tex, w, h };
+  }
+  function letter(ch, col, x, y, z) {
+    const l = makeLabel(64, 64, 0.5, 0.5);
+    l.ctx.font = '600 44px ' + MONO; l.ctx.textAlign = 'center'; l.ctx.textBaseline = 'middle'; l.ctx.fillStyle = col;
+    l.ctx.fillText(ch, 32, 34); l.tex.needsUpdate = true; l.sprite.position.set(x, y, z); scene.add(l.sprite); return l;
+  }
+  function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+  const glowTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+    const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c);
+  })();
+
+  // ---------- console: fader desk, line driver with a DRIVE / LISTEN lever, and a screen showing the RDM log ----------
+  const panelC = document.createElement('canvas'); panelC.width = 760; panelC.height = 380;
+  const panelTex = new THREE.CanvasTexture(panelC), pg = panelC.getContext('2d');
+  let logLines = [];
+  let lever, leverLab;
+  (() => {
+    const body = std({ color: 0x161a22, roughness: 0.55, metalness: 0.2 });
+    box(4.2, 1.0, 3.6, body, CX, 0.62, 0);
+    box(4.2, 3.7, 2.2, body, CX, 1.85, -0.7);
+    box(4.2, 0.08, 2.3, chrome, CX, 3.74, -0.7);
+    const desk = new THREE.Group(); desk.position.set(CX, 1.32, 1.1); desk.rotation.x = 0.435; scene.add(desk);
+    box(4.2, 0.5, 1.6, body, 0, -0.25, 0, desk);
+    const slot = std({ color: 0x030405, roughness: 0.9 }), capM = std({ color: 0xcfd6e2, roughness: 0.35 }), capR = std({ color: 0xe2574c, roughness: 0.35 });
+    [0.3, -0.1, 0.2, -0.3, 0.05, 0.35, -0.2, 0.15].forEach((v, i) => {
+      const x = -1.8 + i * 0.36;
+      box(0.05, 0.02, 1.05, slot, x, 0.01, 0, desk);
+      box(0.2, 0.12, 0.14, i === 7 ? capR : capM, x, 0.07, -v, desk).castShadow = false;
+    });
+    [0xe8a13c, 0x5fe0a0, 0x5aa2f5, 0xe2574c, 0xe8a13c, 0xcfd6e2, 0x5fe0a0, 0x5aa2f5, 0xe8a13c].forEach((c, i) =>
+      box(0.18, 0.06, 0.18, std({ color: 0x20242c, emissive: c, emissiveIntensity: i % 3 === 1 ? 0.9 : 0.25 }), 1.2 + (i % 3) * 0.27, 0.03, -0.42 + Math.floor(i / 3) * 0.27, desk));
+    [1.25, 1.7].forEach(x => { const k = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.14, 20), chrome); k.position.set(x, 0.07, 0.52); desk.add(k); });
+    const xlr = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.2, 24), chrome); xlr.rotation.z = Math.PI / 2; xlr.position.set(SRC_X + 0.08, TY, 0); scene.add(xlr);
+    box(0.3, TY - 1.1, 0.5, body, SRC_X, 1.1 + (TY - 1.1) / 2 - 0.3, 0);
+    lever = new THREE.Group(); lever.position.set(SRC_X - 0.3, TY + 0.2, 0.55); scene.add(lever);
+    box(0.08, 0.62, 0.08, chrome, 0, 0.31, 0, lever);
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 12), std({ color: 0xe8a13c, roughness: 0.3, emissive: 0xe8a13c, emissiveIntensity: 0.3 })); knob.position.y = 0.64; lever.add(knob);
+    leverLab = makeLabel(256, 64, 1.5, 0.375); leverLab.sprite.position.set(SRC_X - 0.4, TY + 1.3, 0.55); scene.add(leverLab.sprite);
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 1.9), new THREE.MeshStandardMaterial({ map: panelTex, roughness: 0.7, emissive: 0xffffff, emissiveMap: panelTex, emissiveIntensity: 0.3 }));
+    panel.position.set(CX, 2.62, 0.405); scene.add(panel);
+    // maker's mark on the bench
+    const mc = document.createElement('canvas'); mc.width = 1024; mc.height = 96; const mg = mc.getContext('2d'), mt = new THREE.CanvasTexture(mc);
+    const drawMark = () => { mg.clearRect(0, 0, 1024, 96); mg.font = '500 50px ' + MONO; mg.textAlign = 'center'; mg.textBaseline = 'middle'; mg.fillStyle = '#140c05'; mg.fillText('Concept LED-FX.COM 2026', 512, 50); mt.needsUpdate = true; };
+    drawMark(); if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawMark);
+    const pl = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 0.49), new THREE.MeshBasicMaterial({ map: mt, transparent: true, opacity: 0.55, depthWrite: false }));
+    pl.rotation.x = -Math.PI / 2; pl.position.set(ledX(2) + SP / 2, 0.02, 3.75); scene.add(pl);
+  })();
+  function drawPanel() {
+    const g = pg; g.fillStyle = '#0b0e14'; g.fillRect(0, 0, 760, 380);
+    g.strokeStyle = '#2a3a58'; g.lineWidth = 3; g.strokeRect(10, 10, 740, 360);
+    g.textBaseline = 'middle'; g.textAlign = 'left';
+    g.font = '600 22px ' + MONO; g.fillStyle = '#8d9bb5'; g.fillText('RDM CONTROLLER  ' + uidStr(CTRL_UID), 28, 40);
+    g.font = '500 20px ' + MONO;
+    logLines.slice(-8).forEach((l, i) => { g.fillStyle = l.col; g.fillText(l.t, 28, 86 + i * 33); });
+    g.fillStyle = '#3d4b66'; g.font = '500 18px ' + MONO; g.textAlign = 'right'; g.fillText('Concept LED-FX.COM 2026', 732, 352);
+    panelTex.needsUpdate = true;
+  }
+  function log(t, kind) {
+    logLines.push({ t, col: kind === 'in' ? '#e8a13c' : kind === 'bad' ? '#e2574c' : kind === 'dmx' ? '#5c6a84' : '#5fe0a0' });
+    if (logLines.length > 40) logLines.shift(); drawPanel();
+  }
+  let leverState = '';
+  function drawLever(state) {
+    if (state === leverState) return; leverState = state;
+    const g = leverLab.ctx; g.clearRect(0, 0, 256, 64); g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '600 30px ' + MONO;
+    g.fillStyle = state === 'drive' ? '#5fe0a0' : '#e8a13c'; g.fillText(state === 'drive' ? 'DRIVE ▶' : '◀ LISTEN', 128, 34); leverLab.tex.needsUpdate = true;
+  }
+
+  // ---------- receivers ----------
+  const rackMat = std({ color: 0x8793a8, roughness: 0.45, metalness: 0.5 });
+  const slotMat = std({ color: 0x2c3442, roughness: 0.8 });
+  const slotGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.03, 20);
+  const bodyMat = std({ color: 0xe9edf2, roughness: 0.55 });
+  const domeGeo = new THREE.SphereGeometry(0.85, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+  const rowCols = ['#f2685f', '#5fe0a0', '#5aa2f5'];
+  const GRN = new THREE.Color(0x5fe0a0), AMB = new THREE.Color(0xe8a13c), DIMRED = new THREE.Color(0x7a2c26), BLUE = new THREE.Color(0x8fb4ff), WHITE3 = new THREE.Color(1, 1, 1);
+  const sensors = [];
+  // reader: a lens on a short post behind the rail. It never touches the marbles, it only looks.
+  function addSensor(x, fx) {
+    const pz = -0.62;
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, TY, 10), chrome); p.position.set(x, TY / 2, pz - 0.05); scene.add(p);
+    box(0.4, 0.4, 0.26, std({ color: 0x1b1f27, roughness: 0.4, metalness: 0.3 }), x, TY, pz - 0.05);
+    const mat = std({ color: 0x223040, roughness: 0.15, emissive: 0x8fb4ff, emissiveIntensity: 0.2 });
+    const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.06, 20), mat); lens.rotation.x = Math.PI / 2; lens.position.set(x, TY, pz + 0.1); scene.add(lens);
+    sensors.push({ x, fx, mat, blink: 0, tint: null });
+  }
+  // start-code reader: one row of 8 bit slots and a lamp (green 0x00 = DMX, amber 0xCC = RDM)
+  const scLamp = std({ color: 0x1a2a22, emissive: 0x5fe0a0, emissiveIntensity: 0, roughness: 0.3 });
+  let scLampCol = null;
+  const scSlots = new Array(8).fill(null);
+  {
+    box(1.8, 0.42, 1.5, std({ color: 0x15181e, roughness: 0.5 }), SC_X, 0.33, -1.45);
+    const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.08, 24), scLamp); lamp.position.set(SC_X, 0.58, -1.45); scene.add(lamp);
+    box(4.0, 0.4, 0.9, rackMat, SC_X, 0.32, 0.55);
+    for (let k = 0; k < 8; k++) { const s = new THREE.Mesh(slotGeo, slotMat), p = scSlotPos(k); s.position.set(p.x, 0.525, p.z); scene.add(s); }
+    addSensor(SC_X, -1);
+    const l = makeLabel(384, 96, 3.4, 0.85); l.sprite.position.set(SC_X, 0.5, 1.55); scene.add(l.sprite);
+    const g = l.ctx; g.textBaseline = 'middle'; g.textAlign = 'center'; g.font = '600 40px ' + MONO; g.fillStyle = '#e6ecf7'; g.fillText('START CODE', 192, 34);
+    g.font = '400 26px ' + MONO; g.fillStyle = '#8d9bb5'; g.fillText('0x00 DMX · 0xCC RDM', 192, 76); l.tex.needsUpdate = true;
+  }
+  const cradleMat = std({ color: 0x1a1f28, roughness: 0.7 });
+  FIX.forEach((f, i) => {
+    const x = ledX(i);
+    box(2.4, 0.5, 2.4, f.uid == null ? std({ color: 0xc9cdd3, roughness: 0.6 }) : bodyMat, x, 0.37, -1.45);
+    [-1, 1].forEach(s => [-0.6, 0.6].forEach(dz => box(0.35, 0.1, 0.5, copper, x + s * 1.3, 0.17, -1.45 + dz)));
+    const domeMat = std({ color: 0xd5dde8, roughness: 0.25, emissive: 0x000000, emissiveIntensity: 0 });
+    const dome = new THREE.Mesh(domeGeo, domeMat); dome.scale.y = 0.6; dome.position.set(x, 0.62, -1.45); scene.add(dome);
+    const light = new THREE.PointLight(0xffffff, 0, 11, 2); light.position.set(x, 1.7, -1.3); scene.add(light);
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, transparent: true, opacity: 0, depthWrite: false }));
+    glow.position.set(x, 1.0, -1.45); glow.scale.set(6, 6, 1); scene.add(glow);
+    Object.assign(f, { domeMat, light, glow, from: new THREE.Color(0), to: new THREE.Color(0), cur: new THREE.Color(0), t: 1, flash: 0, cradle: [null, null, null], state: '', stateCol: null, cmp: 0, muted: false, disc: 'unknown', identify: false, tx: false, fixed: false });
+    // three cradles: this fixture's copies of its R, G and B slots
+    box(2.6, 0.4, 1.9, rackMat, x + 0.15, 0.32, 1.11);
+    for (let ch = 0; ch < CHN; ch++) { const c = cradlePos(i, ch); box(1.15, 0.03, 0.34, cradleMat, c.x, 0.53, c.z).castShadow = false; }
+    ['R', 'G', 'B'].forEach((ch, r) => letter(ch, rowCols[r], x - 1.45, 0.75, 0.55 + r * 0.56));
+    addSensor(x, i);
+    f.lab = makeLabel(384, 144, 3.4, 1.275); f.lab.sprite.position.set(x, 0.65, 3.05); scene.add(f.lab.sprite);
+  });
+  function drawLabel(i) {
+    const f = FIX[i], g = f.lab.ctx; g.clearRect(0, 0, 384, 144);
+    g.textBaseline = 'middle'; g.textAlign = 'left';
+    g.font = '600 40px ' + MONO; g.fillStyle = f.fixed ? '#5fe0a0' : '#e6ecf7'; g.fillText('DMX ' + pad3(f.addr), 8, 26);
+    g.font = '400 26px ' + MONO; g.fillStyle = '#8d9bb5'; g.fillText(f.uid == null ? 'DMX only · no RDM' : uidStr(f.uid), 8, 72);
+    g.font = '500 26px ' + MONO; g.fillStyle = f.stateCol || '#8d9bb5'; g.fillText(f.state || '', 8, 118);
+    f.lab.tex.needsUpdate = true;
+  }
+  function setState(i, text, col) { const f = FIX[i]; if (f.state === text && f.stateCol === col) return; f.state = text; f.stateCol = col; drawLabel(i); }
+  const C_OK = '#5fe0a0', C_DIM = '#5c6a84', C_AMB = '#e8a13c', C_INK = '#8d9bb5';
+
+  // ---------- UID ruler for discovery: a board behind the strip ----------
+  const R0 = U(0x7FF0, 0), RSPAN = 68719476736;      // 7FF0:00000000 … 7FFF:FFFFFFFF = 2^36 UIDs
+  const rulerC = document.createElement('canvas'); rulerC.width = 2048; rulerC.height = 136;
+  const rulerTex = new THREE.CanvasTexture(rulerC), rg = rulerC.getContext('2d');
+  const RX0 = SC_X - 2.2, RX1 = ledX(NUM - 1) + 2.2;
+  const rulerMat = new THREE.MeshBasicMaterial({ map: rulerTex, transparent: true, opacity: 0, depthWrite: false });
+  const ruler = new THREE.Group(); scene.add(ruler); ruler.visible = false;
+  {
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(RX1 - RX0, (RX1 - RX0) * 136 / 2048), rulerMat); board.position.set((RX0 + RX1) / 2, 2.45, -4.3); ruler.add(board);
+    [RX0 + 0.6, RX1 - 0.6].forEach(x => { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.4, 8), chrome); p.position.set(x, 0.65, -4.35); ruler.add(p); });
+  }
+  let rulerRange = null, rulerK = 0;
+  function drawRuler() {
+    const g = rg, W = 2048, H = 136, L = 70, Rr = W - 70, px = (u) => L + (u - R0) / RSPAN * (Rr - L), AY = 76;
+    g.fillStyle = '#0b0e14'; g.fillRect(0, 0, W, H); g.strokeStyle = '#2a3a58'; g.lineWidth = 3; g.strokeRect(2, 2, W - 4, H - 4);
+    g.textBaseline = 'middle'; g.textAlign = 'center';
+    if (rulerRange) {
+      const a = px(rulerRange[0]), b = px(rulerRange[1] + 1);
+      g.fillStyle = 'rgba(232,161,60,0.28)'; g.fillRect(a, 50, Math.max(4, b - a), 52); g.strokeStyle = '#e8a13c'; g.lineWidth = 3; g.strokeRect(a, 50, Math.max(4, b - a), 52);
+    }
+    g.strokeStyle = '#8d9bb5'; g.lineWidth = 3; g.beginPath(); g.moveTo(L, AY); g.lineTo(Rr, AY); g.stroke();
+    g.font = '500 22px ' + MONO; g.lineWidth = 2;
+    for (let m = 0; m <= 16; m++) {
+      const x = L + m / 16 * (Rr - L); g.beginPath(); g.moveTo(x, AY - 10); g.lineTo(x, AY + 10); g.stroke();
+      if (m < 16) { g.fillStyle = '#5c6a84'; g.fillText('7FF' + hex(m, 1), x + (Rr - L) / 32, 118); }
+    }
+    FIX.forEach((f, i) => {
+      if (f.uid == null) return;
+      const x = px(f.uid), col = f.disc === 'unknown' ? '#e6ecf7' : '#5fe0a0';
+      g.fillStyle = f.disc === 'muted' ? '#2c5a44' : '#0b0e14'; g.strokeStyle = col; g.lineWidth = 4;
+      g.beginPath(); g.arc(x, AY, 12, 0, Math.PI * 2); g.fill(); g.stroke();
+      g.fillStyle = col; g.font = '600 26px ' + MONO; g.fillText('F' + (i + 1) + (f.disc === 'muted' ? ' ✓' : ''), x + (i === 0 ? 26 : i === 2 ? -26 : 0), 30);
+    });
+    rulerTex.needsUpdate = true;
+  }
+
+  // ---------- marbles, capsules and tubes ----------
+  const mGeo = new THREE.SphereGeometry(R, 24, 16);
+  const mMat = [std({ color: 0x07080b, roughness: 0.1, metalness: 0.6, envMap: envTex, envMapIntensity: 0.9 }), std({ color: 0xf4f4f0, roughness: 0.2, envMap: envTex, envMapIntensity: 0.35 })];
+  const fMat = { start: std({ color: 0x3b2208, roughness: 0.15, metalness: 0.7, envMap: envTex, envMapIntensity: 0.9 }), stop: std({ color: 0xe8a13c, roughness: 0.2, metalness: 0.5, envMap: envTex, envMapIntensity: 0.6 }) };
+  const FIELD_COL = { hdr: '#e8a13c', dst: '#5aa2f5', src: '#b48cf2', misc: '#8d9bb5', cmd: '#f2c94c', pd: '#5fe0a0', sum: '#e6ecf7', r: '#f2685f', g: '#5fe0a0', b: '#5aa2f5' };
+  const capBodyGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.78, 20, 1, true), capEndGeo = new THREE.CylinderGeometry(0.21, 0.21, 0.09, 20);
+  const capCache = new Map();
+  // a capsule's 8 bits are rings along its body, bit 0 at the leading end (DMX and RDM send the lowest bit first)
+  function capLook(v, field) {
+    const key = v + field; if (capCache.has(key)) return capCache.get(key);
+    const c = document.createElement('canvas'); c.width = 32; c.height = 128; const g = c.getContext('2d');
+    g.fillStyle = FIELD_COL[field]; g.fillRect(0, 0, 32, 128);
+    for (let k = 0; k < 8; k++) { g.fillStyle = (v >> k) & 1 ? '#f4f4f0' : '#0a0b0e'; g.fillRect(0, 128 - (k + 1) * 16 + 2, 32, 12); }
+    const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding;
+    const mat = std({ map: tex, roughness: 0.25, metalness: 0.1, envMap: envTex, envMapIntensity: 0.4 });
+    const lc = document.createElement('canvas'); lc.width = 96; lc.height = 48; const lg = lc.getContext('2d');
+    lg.fillStyle = 'rgba(10,14,22,0.85)'; roundRect(lg, 4, 4, 88, 40, 8); lg.fill();
+    lg.font = '600 30px ' + MONO; lg.textAlign = 'center'; lg.textBaseline = 'middle'; lg.fillStyle = FIELD_COL[field]; lg.fillText(hex(v, 2), 48, 26);
+    const smat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(lc), transparent: true, depthWrite: false });
+    const look = { mat, smat }; capCache.set(key, look); return look;
+  }
+  function makeCapsule(v, field, dir) {
+    const look = capLook(v, field), gr = new THREE.Group();
+    const body = new THREE.Mesh(capBodyGeo, look.mat); body.rotation.z = Math.PI / 2; body.castShadow = true; gr.add(body);
+    [-0.435, 0.435].forEach(x => { const e = new THREE.Mesh(capEndGeo, copperCap); e.rotation.z = Math.PI / 2; e.position.x = x; gr.add(e); });
+    const sp = new THREE.Sprite(look.smat); sp.scale.set(0.56, 0.28, 1); sp.position.y = 0.46; gr.add(sp);
+    if (dir < 0) gr.rotation.y = Math.PI;
+    return gr;
+  }
+  const tubeGeo = new THREE.CylinderGeometry(0.22, 0.22, 2.0, 24, 1, true), tubeEndGeo = new THREE.CylinderGeometry(0.23, 0.23, 0.1, 24);
+  function makeTube(text, col) {
+    const gr = new THREE.Group(), c = new THREE.Color(col);
+    const mat = std({ color: c, emissive: c, emissiveIntensity: 0.35, roughness: 0.2, metalness: 0.2, transparent: true, opacity: 0.88 });
+    const body = new THREE.Mesh(tubeGeo, mat); body.rotation.z = Math.PI / 2; body.castShadow = true; gr.add(body);
+    [-1.03, 1.03].forEach(x => { const e = new THREE.Mesh(tubeEndGeo, copperCap); e.rotation.z = Math.PI / 2; e.position.x = x; gr.add(e); });
+    const lc = document.createElement('canvas'); lc.width = 640; lc.height = 64; const lg = lc.getContext('2d');
+    lg.fillStyle = 'rgba(10,14,22,0.88)'; roundRect(lg, 4, 4, 632, 56, 10); lg.fill();
+    lg.font = '600 26px ' + MONO; lg.textAlign = 'center'; lg.textBaseline = 'middle'; lg.fillStyle = col; lg.fillText(text, 320, 34);
+    const tex = new THREE.CanvasTexture(lc), smat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+    const sp = new THREE.Sprite(smat); sp.scale.set(3.6, 0.36, 1); sp.position.y = 0.6; gr.add(sp);
+    gr.userData.disp = [mat, tex, smat];
+    return gr;
+  }
+
+  // ---------- simulation engine ----------
+  // Sim time stops while paused. Scenes are async scripts that wait on sim time or on conditions.
+  let running = false, stepOne = false, interval = 0.1, follow = true;
+  let units = [], em = null, waits = [], gen = 0;
+  let sclock = 0, rate = 10, history = [], noteText = 'idle: line HIGH (mark)';
+  let driver = 'c', lineLow = false, mab = false, dimTarget = 1, activeSlot = -1, activeFx = -1;
+  const TUBE_K = 3.5, SPEED0 = 7;
+  const v0 = () => SPEED0 * 0.1 / interval;
+  const hopT = () => Math.max(0.16, Math.min(0.5, interval * 1.6));
+  const LEN = { bit: 0.52, cap: 0.96, tube: 2.26 };
+  const spacing = (a, b) => (LEN[a.kind] + LEN[b.kind]) / 2 + (a.kind === 'bit' && b.kind === 'bit' ? 0.2 : 0.45);
+
+  function sleep(s) { const g = gen; return new Promise((res, rej) => waits.push({ t: s, res, rej, g })); }
+  function until(f) { return new Promise((res, rej) => waits.push({ f, res, rej })); }
+  function tickWaits(sdt) {
+    for (let i = waits.length - 1; i >= 0; i--) {
+      const w = waits[i];
+      if (w.f ? w.f() : (w.t -= sdt) <= 0) { waits.splice(i, 1); w.res(); }
+    }
+  }
+  function abortAll() {
+    gen++; const ws = waits; waits = []; ws.forEach(w => w.rej(new Error('abort')));
+    if (em) { const r = em.rej; em = null; r(new Error('abort')); }
+  }
+  function addUnit(u) { scene.add(u.mesh); units.push(u); return u; }
+  function removeUnit(u) { scene.remove(u.mesh); (u.mesh.userData.disp || []).forEach(d => d.dispose()); }
+  function startHop(u, to, d, after, shrink) { u.state = 'hop'; u.hop = { from: u.mesh.position.clone(), to: to.clone(), t: 0, d, after, shrink: shrink || 0, s0: u.mesh.scale.x }; }
+  function sinkUnit(u) { u.state = 'sink'; u.st = 0; u.sy = u.mesh.position.y; u.ss = u.mesh.scale.x; }
+  function fadeUnit(u, d) { u.state = 'fade'; u.st = 0; u.fd = d; u.ss = u.mesh.scale.x; }
+  const busy = () => units.some(u => u.state === 'rail' || u.state === 'hop' || u.state === 'arrived');
+  // the request has gone past every fixture: nothing is still travelling out along the strip
+  const lineClear = () => until(() => !em && !units.some(u => u.state === 'rail' && u.dir > 0 && u.x < ledX(NUM - 1) + 0.8));
+
+  function emit(items, opts) {
+    return new Promise((res, rej) => { em = Object.assign({ items, i: 0, acc: 0, res, rej }, opts); });
+  }
+  function updateEmitter(sdt) {
+    if (!em) return;
+    em.acc += sdt;
+    while (em) {
+      const it = em.items[em.i], prev = em.items[em.i - 1];
+      const need = prev ? spacing(prev, it) / (v0() * (it.kind === 'tube' ? TUBE_K : 1)) : 0;
+      if (em.acc < need) break;
+      em.acc -= need; spawn(it, em, em.acc); em.i++;
+      if (stepOne) { stepOne = false; setRunning(false); }
+      if (em.i >= em.items.length) { const r = em.res; em = null; r(); }
+    }
+  }
+  function pushH(e) { const l = history[history.length - 1]; if (l && (l.t1 == null || l.t1 > e.t0)) l.t1 = Math.max(l.t0, e.t0); history.push(e); if (history.length > 400) history.shift(); }
+  function spawn(it, e, lead) {
+    let mesh, y = TY;
+    if (it.kind === 'bit') { mesh = new THREE.Mesh(mGeo, it.fk === 'data' ? mMat[it.bit] : fMat[it.fk]); mesh.castShadow = true; }
+    else if (it.kind === 'cap') { mesh = makeCapsule(it.v, it.field, e.dir); y = CAP_Y; }
+    else { mesh = makeTube(it.text, it.col); y = TUBE_Y; }
+    const v = v0() * (it.kind === 'tube' ? TUBE_K : 1), x = e.x0 + e.dir * lead * v;
+    mesh.position.set(x, y, 0);
+    addUnit({ mesh, kind: it.kind, item: it, pkt: e.pkt, x, dir: e.dir, state: 'rail', next: e.dir > 0 ? 0 : e.nextIn });
+    // the scope: a bit is one cell, a capsule a 3-cell byte box, a tube a 9-cell packet box
+    const w = it.kind === 'bit' ? 1 : it.kind === 'cap' ? 3 : 9;
+    const period = it.kind === 'tube' ? 1.2 : spacing(it, it) / v;
+    rate = w / period;
+    const t0 = sclock - lead * rate, drv = e.drv;
+    if (it.kind === 'bit') pushH({ type: 'lv', lv: it.bit, t0, t1: t0 + 1, drv, tag: it.fk === 'start' ? 'S' : it.fk === 'stop' ? 'P' : String(it.bit) });
+    else pushH({ type: 'box', t0, t1: t0 + w, drv, tag: it.kind === 'cap' ? hex(it.v, 2) : it.short || '', col: it.kind === 'cap' ? FIELD_COL[it.field] : it.col });
+  }
+  const scBits = (v) => { const a = [{ kind: 'bit', fk: 'start', bit: 0 }]; for (let k = 0; k < 8; k++) a.push({ kind: 'bit', fk: 'data', bit: (v >> k) & 1, k }); a.push({ kind: 'bit', fk: 'stop', bit: 1 }, { kind: 'bit', fk: 'stop', bit: 1 }); return a; };
+
+  // a marble or capsule rolls past a reader going out from the console
+  function passOut(u, sn) {
+    sn.blink = 1;
+    const it = u.item, pkt = u.pkt;
+    if (sn.fx < 0) { if (it.kind === 'bit' && it.fk === 'data') copyBit(u, it); return; }
+    const i = sn.fx, f = FIX[i];
+    if (pkt.type === 'dmx') {
+      if (it.kind !== 'cap') { if (it.fk === 'start') setState(i, 'DMX · counting slots', C_INK); return; }
+      const n = it.slot, ch = n - f.addr;
+      if (ch >= 0 && ch < CHN) {
+        setState(i, 'slot ' + pad3(n) + ' · COPY ' + 'RGB'[ch], C_OK); copyCap(u, i, ch);
+        if (n >= activeSlot) { activeSlot = n; activeFx = i; }
+      } else setState(i, 'slot ' + pad3(n) + ' · pass', C_DIM);
+      return;
+    }
+    if (f.uid == null) { if (it.kind !== 'cap' ? it.fk === 'start' : it.idx === 1) setState(i, 'not 0x00 · ignored', C_DIM); return; }
+    if (pkt.mode === 'tube') { const r = pkt.react ? pkt.react(i) : null; if (r) { setState(i, r[0], r[1]); sn.tint = r[2] || null; } return; }
+    if (it.kind !== 'cap') { if (it.fk === 'start') { f.cmp = 0; setState(i, 'RDM · reading', C_INK); } return; }
+    if (it.idx >= 3 && it.idx <= 8 && f.cmp >= 0) {
+      const mine = uidBytes(f.uid)[it.idx - 3];
+      if (pkt.dst === BCAST || it.v === mine) {
+        f.cmp++;
+        if (f.cmp === 6) { setState(i, pkt.dst === BCAST ? 'broadcast · for all' : 'UID match · for me', C_OK); sn.tint = GRN; }
+        else setState(i, 'UID ' + f.cmp + '/6 ✓', C_OK);
+      } else { f.cmp = -1; setState(i, 'UID byte ' + (it.idx - 2) + ' ≠ · not me', C_DIM); sn.tint = DIMRED; }
+    }
+  }
+  function copyBit(u, it) {
+    const mesh = new THREE.Mesh(mGeo, mMat[it.bit]); mesh.position.copy(u.mesh.position);
+    const c = addUnit({ mesh, kind: 'bit', item: it, state: 'hop' });
+    if (scSlots[it.k]) fadeUnit(scSlots[it.k], 0.3);
+    scSlots[it.k] = c;
+    startHop(c, scSlotPos(it.k), hopT(), () => {
+      if (it.k !== 7) return;
+      const v = scSlots.reduce((a, s, k) => a | ((s ? s.item.bit : 0) << k), 0);
+      scLampCol = v === 0 ? GRN : v === 0xCC ? AMB : null;
+    }, 0.27);
+  }
+  function copyCap(u, i, ch) {
+    const f = FIX[i], it = u.item, mesh = makeCapsule(it.v, it.field, 1); mesh.position.copy(u.mesh.position);
+    const c = addUnit({ mesh, kind: 'cap', item: it, state: 'hop' });
+    if (f.cradle[ch]) fadeUnit(f.cradle[ch], 0.3);
+    f.cradle[ch] = c;
+    startHop(c, cradlePos(i, ch), hopT(), () => { if (ch === CHN - 1) lightUp(i); }, 0.12);
+  }
+  function lightUp(i) {
+    const f = FIX[i], v = f.cradle.map(c => c ? c.item.v : 0);
+    f.from.copy(f.cur); f.to.setRGB(v[0] / 255, v[1] / 255, v[2] / 255).convertSRGBToLinear(); f.t = 0; f.flash = 1;
+  }
+
+  // ---------- building blocks for the scenes ----------
+  const latchEl = $('latch');
+  function banner(tag, text, kind) { latchEl.hidden = false; $('latchTag').textContent = tag; $('latchText').textContent = text; latchEl.className = 'latch' + (kind ? ' ' + kind : ''); }
+  const hideBanner = () => { latchEl.hidden = true; };
+  const statusEl = $('status');
+  function setStatus(t, warn) { statusEl.textContent = t; statusEl.classList.toggle('reset', !!warn); }
+
+  // camera aims
+  const followOut = (limit) => () => { let m = -Infinity; units.forEach(u => { if (u.state === 'rail' && u.dir > 0) m = Math.max(m, u.x); }); return m === -Infinity ? null : Math.max(SC_X - 1.6, Math.min(limit, m)); };
+  const followIn = () => { let m = Infinity; units.forEach(u => { if (u.state === 'rail' && u.dir < 0) m = Math.min(m, u.x); }); return m === Infinity ? null : Math.max(SC_X - 1.6, m); };
+  const followDmx = () => activeFx < 0 ? SC_X - 1.6 : ledX(activeFx);
+  let focus = () => SC_X - 1.6, distGoal = null;
+
+  async function lineBreak(drv, label, hold) {
+    const b = { type: 'lv', lv: 0, t0: sclock, t1: null, drv, tag: label };
+    pushH(b); lineLow = true; rate = 8 / hold; noteText = label;
+    await sleep(hold);
+    b.t1 = sclock; lineLow = false; mab = true;
+    const m = { type: 'lv', lv: 1, t0: sclock, t1: null, drv, tag: 'MAB' }; pushH(m); rate = 2 / 0.35;
+    await sleep(0.35);
+    m.t1 = sclock; mab = false;
+  }
+  async function dmx(note) {
+    activeSlot = -1; activeFx = -1; focus = followDmx; driver = 'c';
+    sensors.forEach(sn => { sn.tint = null; });
+    const fr = nextFrame(), vals = [];
+    FIX.forEach((f, i) => { const c = fr.cols[i]; vals[f.plan] = c.r; vals[f.plan + 1] = c.g; vals[f.plan + 2] = c.b; });
+    setStatus(note || 'DMX packet: BREAK, start code 0x00, then slots 1–18. Each fixture copies the three slots at its address.');
+    await lineBreak('c', 'BREAK ≥ 88 µs', 0.8);
+    noteText = 'DMX · console drives';
+    log('→ DMX  0x00 · ' + fr.meta.name, 'dmx');
+    const items = scBits(0).concat(Array.from({ length: NUM * CHN }, (_, j) => ({ kind: 'cap', v: vals[j + 1], field: 'rgb'[j % 3], slot: j + 1 })));
+    await emit(items, { x0: SRC_X, dir: 1, pkt: { type: 'dmx' }, drv: 'c' });
+    await until(() => !busy());
+  }
+  async function rdmSend(pkt, mode, o) {
+    pkt.type = 'rdm'; pkt.mode = mode; driver = 'c';
+    sensors.forEach(sn => { sn.tint = null; }); FIX.forEach(f => { f.cmp = 0; });
+    if (o.focus !== false) focus = mode === 'tube' && o.wide ? focus : followOut(o.target != null ? o.target : ledX(NUM - 1));
+    await lineBreak('c', 'BREAK ≥ 176 µs', mode === 'tube' ? 0.5 : 0.8);
+    noteText = 'RDM request · console drives';
+    log(o.log, 'out');
+    const items = mode === 'cap'
+      ? scBits(0xCC).concat(pkt.bytes.slice(1).map((v, j) => ({ kind: 'cap', v, field: pkt.fields[j + 1], idx: j + 1 })))
+      : [{ kind: 'tube', text: o.tube, col: o.col || '#5aa2f5', short: o.short || 'RDM' }];
+    await emit(items, { x0: SRC_X, dir: 1, pkt, drv: 'c' });
+  }
+  // the console lets go of the line and the fixture answers on the same two wires
+  async function respond(i, pkt, mode, o) {
+    driver = 'none'; noteText = 'nobody drives: turnaround';
+    if (o.banner) { banner(o.banner[0], o.banner[1], 'info'); dimTarget = 0.55; }
+    await sleep(o.gap || 0.5);
+    const f = FIX[i]; f.tx = true; sensors[i + 1].tint = AMB; setState(i, 'answering', C_AMB); driver = 'f';
+    if (o.focus !== false) focus = () => { const x = followIn(); return x == null ? ledX(i) : x; };
+    if (mode !== 'disc') await lineBreak('f', 'BREAK from fixture', o.banner ? 1.2 : 0.5);
+    if (o.banner) { await sleep(0.3); hideBanner(); dimTarget = 1; }
+    noteText = 'fixture ' + (i + 1) + ' drives · ' + (mode === 'disc' ? 'no break for discovery' : 'RDM reply');
+    const items = mode === 'cap'
+      ? scBits(0xCC).concat(pkt.bytes.slice(1).map((v, j) => ({ kind: 'cap', v, field: pkt.fields[j + 1], idx: j + 1 })))
+      : [{ kind: 'tube', text: o.tube, col: o.col || '#e8a13c', short: o.short || 'reply' }];
+    await emit(items, { x0: ledX(i), dir: -1, pkt: Object.assign(pkt, { type: 'rdm', mode }), drv: 'f', nextIn: i });
+    await until(() => !units.some(u => u.dir < 0 && (u.state === 'rail' || u.state === 'hop')));
+    f.tx = false; sensors[i + 1].tint = null; driver = 'c'; setState(i, 'answered ✓', C_DIM);
+    if (o.log) log(o.log, 'in');
+  }
+  // several fixtures answer a discovery question at once: their replies mash together on the wire
+  async function collide(list) {
+    driver = 'none'; await sleep(0.35); driver = 'f';
+    focus = () => (SC_X + ledX(NUM - 1)) / 2;
+    list.forEach(i => { FIX[i].tx = true; sensors[i + 1].tint = AMB; setState(i, 'answering', C_AMB); });
+    noteText = list.length + ' fixtures drive at once';
+    pushH({ type: 'box', t0: sclock, t1: sclock + 9, drv: 'f', tag: 'COLLISION', col: '#e2574c' }); rate = 9 / 1.2;
+    // every answer is on the wire at the same moment, so they all reach the console together
+    const T = (Math.min(...list.map(ledX)) - INBOX_X) / (v0() * TUBE_K);
+    const tubes = list.map(i => {
+      const mesh = makeTube('EUID ' + uidStr(FIX[i].uid), '#e8a13c'); mesh.position.set(ledX(i), TUBE_Y, 0);
+      return addUnit({ mesh, kind: 'tube', item: { kind: 'tube' }, pkt: { type: 'rdm', mode: 'tube' }, x: ledX(i), dir: -1, vf: (ledX(i) - INBOX_X) / T, state: 'rail', next: i, merge: true });
+    });
+    await until(() => tubes.every(t => t.state === 'arrived'));
+    tubes.forEach(t => { removeUnit(t); units.splice(units.indexOf(t), 1); });
+    const bad = makeTube('GARBLED · checksum bad', '#e2574c'); bad.position.set(INBOX_X, TUBE_Y, 0); bad.rotation.z = 0.12;
+    const b = addUnit({ mesh: bad, kind: 'tube', item: {}, pkt: {}, x: INBOX_X, dir: -1, state: 'rest' });
+    spark = 1;
+    startHop(b, INBOX, 0.5, () => sinkUnit(b), 0.4);
+    list.forEach(i => { FIX[i].tx = false; sensors[i + 1].tint = null; });
+    driver = 'c';
+  }
+  let spark = 0;
+  const sparkSp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xe2574c, blending: THREE.AdditiveBlending, transparent: true, opacity: 0, depthWrite: false }));
+  sparkSp.position.set(INBOX_X, TY, 0); sparkSp.scale.set(3, 3, 1); scene.add(sparkSp);
+
+  // ---------- the five scenes ----------
+  let pending = null, firstCollision = true;
+  async function scene1() {
+    await dmx('Ordinary DMX first: start code 0x00, then slots 1–18. Each fixture copies the three slots at its address.');
+    banner('START CODE 0xCC', 'Same cable, same BREAK, but this packet starts with 0xCC: RDM. A DMX-only fixture sees a start code that is not 0x00 and ignores the whole packet.', 'info');
+    setStatus('RDM packet to everyone (UID FFFF:FFFFFFFF): DISC_UN_MUTE. From the second byte on, each capsule is one byte.');
+    await rdmSend(request(BCAST, CC.DISC, PID.UNMUTE), 'cap', { log: '→ DISC_UN_MUTE  broadcast' });
+    await until(() => !busy());
+    hideBanner();
+    setStatus('Nobody answers a broadcast, so the line never turns around. Fixture 4 only speaks DMX and ignored all of it.');
+    await sleep(2.6);
+    await dmx('Back to DMX. The console keeps the lights fed between RDM packets, and the lights never noticed.');
+  }
+  async function scene2() {
+    const i = 2, f = FIX[i];
+    setStatus('The console asks one fixture by name: GET DEVICE_INFO to ' + uidStr(f.uid) + '. Scene 4 shows how it learns the UIDs.');
+    const req = request(f.uid, CC.GET, PID.DEVICE_INFO);
+    await rdmSend(req, 'cap', { log: '→ GET DEVICE_INFO  ' + uidStr(f.uid), target: ledX(i) });
+    await lineClear();
+    pending = req;
+    setStatus('Every RDM fixture compared the destination UID byte by byte as it rolled past. Only fixture 3 matched all six bytes, and now it must answer.');
+    focus = () => ledX(i);
+    await sleep(3);
+  }
+  async function scene3() {
+    const i = 2, f = FIX[i];
+    let req = pending; pending = null;
+    if (!req) {
+      req = request(f.uid, CC.GET, PID.DEVICE_INFO);
+      setStatus('The question from scene 2 again, sent as one tube: GET DEVICE_INFO to fixture 3.');
+      await rdmSend(req, 'tube', { tube: 'GET DEVICE_INFO → ' + uidStr(f.uid), short: 'GET', log: '→ GET DEVICE_INFO  ' + uidStr(f.uid), target: ledX(i) });
+      await lineClear();
+    }
+    setStatus('TURNAROUND: the console stops driving the line. Within 2 ms fixture 3 must take it over and reply.', true);
+    await respond(i, reply(req, f.uid, deviceInfo(f)), 'cap', {
+      banner: ['TURNAROUND', 'The console lets go of the line and listens. Within 2 ms fixture 3 takes the same two wires, sends its own BREAK and answers.'],
+      gap: 2.2, log: '←   ACK DEVICE_INFO · 3 ch · DMX ' + pad3(f.addr)
+    });
+    setStatus('Reply: ACK with 19 bytes of device info (model, footprint 3 channels, start address 004). The console takes the line back.');
+    await sleep(2.2);
+    await dmx('The console drives again and DMX carries on.');
+  }
+  async function scene4() {
+    distGoal = 'wide'; focus = () => (SC_X + ledX(NUM - 1)) / 2; rulerK = 1;
+    banner('DISCOVERY', 'The console does not know who is on the cable. It asks: is anyone between these two UIDs? Every unmuted fixture in the range answers at once.', 'info');
+    setStatus('Each long tube is now one whole packet. The search starts at the prototype makers\' range 7FF0–7FFF; a real console starts at 0000:00000000, and the first halvings look the same.');
+    await sleep(3.5);
+    await rdmSend(request(BCAST, CC.DISC, PID.UNMUTE), 'tube', { tube: 'DISC_UN_MUTE → everyone', short: 'UN_MUTE', log: '→ DISC_UN_MUTE  broadcast', wide: true });
+    await lineClear();
+    hideBanner();
+    await search(R0, R0 + RSPAN - 1);
+    rulerRange = null; drawRuler();
+    log('  discovery done: 5 RDM fixtures', 'out');
+    setStatus('Discovery done: five UIDs found and muted. Fixture 4 never answered: it only speaks DMX.');
+    await sleep(3);
+    rulerK = 0; distGoal = 'base';
+  }
+  async function search(lo, hi) {
+    for (;;) {
+      rulerRange = [lo, hi]; drawRuler();
+      const inRange = FIX.map((f, i) => i).filter(i => FIX[i].uid != null && !FIX[i].muted && FIX[i].uid >= lo && FIX[i].uid <= hi);
+      const req = request(BCAST, CC.DISC, PID.DUB, uidBytes(lo).concat(uidBytes(hi)));
+      req.react = (i) => FIX[i].muted ? ['muted · stays quiet', C_DIM] : (FIX[i].uid >= lo && FIX[i].uid <= hi) ? ['in range · answers', C_AMB, AMB] : ['out of range', C_DIM];
+      setStatus('DISC_UNIQUE_BRANCH: anyone unmuted between ' + uidStr(lo) + ' and ' + uidStr(hi) + '?');
+      await rdmSend(req, 'tube', { tube: 'DUB ' + uidStr(lo) + ' – ' + uidStr(hi), short: 'DUB', log: '→ DUB ' + uidStr(lo).slice(0, 7) + '… – ' + uidStr(hi).slice(0, 7) + '…', wide: true });
+      await lineClear();
+      if (!inRange.length) {
+        driver = 'none'; noteText = 'nobody answers';
+        log('←   silence', 'dmx'); setStatus('No answer: nobody unmuted in that range, so the console moves on.');
+        await sleep(1.0); driver = 'c'; return;
+      }
+      if (inRange.length > 1) {
+        if (firstCollision) { banner('COLLISION', 'Two or more fixtures answered at once. Their bytes mash together on the wire, the checksum fails, so the console splits the range in half and asks each half.', 'bad'); }
+        setStatus(inRange.length + ' fixtures answered at once: garbled. Split the range in half and ask again.', true);
+        await collide(inRange);
+        log('←   collision · split the range', 'bad');
+        if (firstCollision) { firstCollision = false; await sleep(2.5); hideBanner(); } else await sleep(0.6);
+        const mid = lo + (hi - lo + 1) / 2 - 1;
+        await search(lo, mid);
+        await search(mid + 1, hi);
+        return;
+      }
+      const i = inRange[0], f = FIX[i];
+      setStatus('Only fixture ' + (i + 1) + ' is in range, so its answer arrives clean: ' + uidStr(f.uid) + '. Discovery replies have no BREAK.');
+      await respond(i, {}, 'disc', { tube: 'EUID ' + uidStr(f.uid), short: 'EUID', log: '←   ' + uidStr(f.uid) + '  ✓ checksum', focus: false });
+      f.disc = 'found'; drawRuler();
+      const m = request(f.uid, CC.DISC, PID.MUTE);
+      m.react = (j) => j === i ? ['UID match · mute', C_OK, GRN] : ['not me', C_DIM];
+      setStatus('Found ' + uidStr(f.uid) + '. DISC_MUTE tells it to stay quiet for the rest of the search.');
+      await rdmSend(m, 'tube', { tube: 'DISC_MUTE → ' + uidStr(f.uid), short: 'MUTE', log: '→ DISC_MUTE  ' + uidStr(f.uid), wide: true });
+      await lineClear();
+      await respond(i, reply(m, f.uid, [0, 0]), 'tube', { tube: 'ACK MUTE · ' + uidStr(f.uid), short: 'ACK', log: '←   ' + uidStr(f.uid) + ' muted', focus: false });
+      f.muted = true; f.disc = 'muted'; setState(i, 'found · muted', C_OK); drawRuler();
+      // ask the same range again: someone else might still be hiding in it
+    }
+  }
+  async function scene5() {
+    const a = 0, b = 2, fa = FIX[a], fb = FIX[b];
+    await dmx('Fixtures 1 and 3 always show the same colour. Watch which slots they copy.');
+    for (const i of [a, b]) {
+      const f = FIX[i], req = request(f.uid, CC.GET, PID.DEVICE_INFO);
+      req.react = (j) => j === i ? ['UID match · for me', C_OK, GRN] : ['not me', C_DIM];
+      setStatus('GET DEVICE_INFO to fixture ' + (i + 1) + ' (' + uidStr(f.uid) + '). One tube per packet from here.');
+      await rdmSend(req, 'tube', { tube: 'GET DEVICE_INFO → ' + uidStr(f.uid), short: 'GET', log: '→ GET DEVICE_INFO  ' + uidStr(f.uid), target: ledX(i) });
+      await lineClear();
+      await respond(i, reply(req, f.uid, deviceInfo(f)), 'tube', { tube: 'ACK · 3 ch · DMX ' + pad3(f.addr), short: 'ACK', log: '←   ACK  F' + (i + 1) + ' · 3 ch · DMX ' + pad3(f.addr) });
+    }
+    banner('TWO ON 004', 'Fixtures 1 and 3 both report start address 004, so both copy slots 4–6. On the rig plan fixture 1 should be on 016.', 'bad');
+    await sleep(3.5); hideBanner();
+    const s = request(fa.uid, CC.SET, PID.DMX_START_ADDRESS, [0, 16]);
+    s.react = (j) => j === a ? ['UID match · for me', C_OK, GRN] : ['not me', C_DIM];
+    setStatus('SET DMX_START_ADDRESS = 016 to fixture 1. No ladder needed.');
+    await rdmSend(s, 'tube', { tube: 'SET DMX_START_ADDRESS 016 → ' + uidStr(fa.uid), short: 'SET', col: '#f2c94c', log: '→ SET DMX_START_ADDRESS 016  F1', target: ledX(a) });
+    await lineClear();
+    fa.addr = 16; fa.fixed = true; drawLabel(a);
+    await respond(a, reply(s, fa.uid, []), 'tube', { tube: 'ACK · now DMX 016', short: 'ACK', log: '←   ACK  F1 now on DMX 016' });
+    const idn = request(fa.uid, CC.SET, PID.IDENTIFY_DEVICE, [1]);
+    idn.react = (j) => j === a ? ['UID match · identify', C_OK, GRN] : ['not me', C_DIM];
+    setStatus('SET IDENTIFY_DEVICE on: fixture 1 flashes so someone on the floor can see which one it is.');
+    await rdmSend(idn, 'tube', { tube: 'SET IDENTIFY_DEVICE on → ' + uidStr(fa.uid), short: 'SET', col: '#f2c94c', log: '→ SET IDENTIFY_DEVICE on  F1', target: ledX(a) });
+    await lineClear();
+    fa.identify = true;
+    await respond(a, reply(idn, fa.uid, []), 'tube', { tube: 'ACK · identifying', short: 'ACK', log: '←   ACK  F1 identifying' });
+    await dmx('DMX again: fixture 1 now copies slots 16–18 and gets its own colour (while it flashes to identify itself).');
+    const off = request(fa.uid, CC.SET, PID.IDENTIFY_DEVICE, [0]);
+    off.react = (j) => j === a ? ['UID match · stop', C_OK, GRN] : ['not me', C_DIM];
+    setStatus('SET IDENTIFY_DEVICE off.');
+    await rdmSend(off, 'tube', { tube: 'SET IDENTIFY_DEVICE off → ' + uidStr(fa.uid), short: 'SET', col: '#f2c94c', log: '→ SET IDENTIFY_DEVICE off  F1', target: ledX(a) });
+    await lineClear();
+    fa.identify = false;
+    await respond(a, reply(off, fa.uid, []), 'tube', { tube: 'ACK', short: 'ACK', log: '←   ACK' });
+    setStatus('Fixed from the console: fixture 1 is on 016, matching the rig plan. The loop starts again with the mistake put back.');
+    await sleep(3);
+  }
+  const SCENES = [
+    ['Same cable, new start code', scene1],
+    ['Addressed by name', scene2],
+    ['The line turns around', scene3],
+    ['Discovery', scene4],
+    ['Fix it remotely', scene5]
+  ];
+  let chapter = 0;
+  function setupScene(c) {
+    chapter = c; $('chName').textContent = (c + 1) + '/5 · ' + SCENES[c][0];
+    hideBanner(); dimTarget = 1; driver = 'c'; distGoal = c === 3 ? 'wide' : 'base';
+    if (c !== 2) pending = null;
+    FIX.forEach((f, i) => { f.muted = false; f.disc = 'unknown'; f.identify = false; f.tx = false; f.cmp = 0; f.state = ''; f.stateCol = null; });
+    FIX[0].addr = 4; FIX[0].fixed = false;
+    FIX.forEach((f, i) => drawLabel(i));
+    rulerRange = null; rulerK = c === 3 ? 1 : 0; drawRuler();
+    sensors.forEach(sn => { sn.tint = null; });
+    if (c === 0 && logLines.length) log('  (rig reset: fixture 1 back on 004)', 'dmx');
+  }
+  async function runFrom(n) {
+    try {
+      for (let c = n; ; c = (c + 1) % SCENES.length) {
+        setupScene(c);
+        await SCENES[c][1]();
+        await sleep(1.2);
+      }
+    } catch (e) { if (!e || e.message !== 'abort') throw e; }
+  }
+  function clearLine(all) {
+    for (let i = units.length - 1; i >= 0; i--) {
+      const u = units[i];
+      if (all || u.state !== 'rest') { removeUnit(u); units.splice(i, 1); }
+    }
+    if (all) { scSlots.fill(null); FIX.forEach(f => { f.cradle = [null, null, null]; }); }
+    else {   // a copy cut off mid-hop must not leave its slot pointing at a removed marble
+      scSlots.forEach((s, k) => { if (s && units.indexOf(s) < 0) scSlots[k] = null; });
+      FIX.forEach(f => { f.cradle = f.cradle.map(c => c && units.indexOf(c) >= 0 ? c : null); });
+    }
+    lineLow = false; mab = false; driver = 'c';
+    history.forEach(h => { if (h.t1 == null) h.t1 = sclock; });
+  }
+  function jumpTo(n) { abortAll(); clearLine(false); runFrom((n + SCENES.length) % SCENES.length); }
+  $('prevCh').addEventListener('click', () => jumpTo(chapter - 1));
+  $('nextCh').addEventListener('click', () => jumpTo(chapter + 1));
+
+  // ---------- controls ----------
+  function setLabel(id, long, short) { const b = $(id); b.setAttribute('aria-label', long); b.querySelector('.bl').textContent = long; b.querySelector('.bs').textContent = short; }
+  function setRunning(v) { running = v; $('playBtn').disabled = v; setLabel('stepBtn', v ? 'Pause' : 'Step', v ? '❚❚' : 'Step'); }
+  $('playBtn').addEventListener('click', () => { stepOne = false; setRunning(true); });
+  $('stepBtn').addEventListener('click', () => { if (running && !stepOne) { setRunning(false); return; } stepOne = true; running = true; });
+  function fullReset() {
+    abortAll(); clearLine(true); setRunning(false); stepOne = false;
+    pIdx = 0; pStep = 0; tn = 0; logLines = []; drawPanel(); history = []; sclock = 0; firstCollision = true; scLampCol = null;
+    FIX.forEach(f => { f.from.copy(f.cur); f.to.setRGB(0, 0, 0); f.t = 0; f.flash = 0; });
+    setStatus('Ready. Press Play, or use ‹ › to pick a scene.');
+    runFrom(0);
+  }
+  $('resetBtn').addEventListener('click', fullReset);
+{{INFO}}
+  $('speed').addEventListener('input', (e) => { interval = +e.target.value / 1000; $('speedOut').textContent = e.target.value + ' ms'; });
+  function setFollow(v) { follow = v; camV = 0; setLabel('camBtn', v ? 'Free camera' : 'Follow', v ? 'Free' : 'Follow'); }
+  $('camBtn').addEventListener('click', () => setFollow(!follow));
+  renderer.domElement.addEventListener('pointerdown', (e) => { if (e.button === 2) setFollow(false); });
+  renderer.domElement.addEventListener('touchstart', (e) => { if (e.touches.length === 2) setFollow(false); }, { passive: true });
+
+  // ---------- oscilloscope ----------
+  // Right edge = now. Green = the console drives the line, amber = a fixture drives it, grey = nobody (idle HIGH).
+  const sc = $('scope'), sg = sc.getContext('2d');
+  function drawScope() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2), w = sc.clientWidth, h = sc.clientHeight;
+    if (!w) return;
+    if (sc.width !== Math.round(w * dpr)) { sc.width = Math.round(w * dpr); sc.height = Math.round(h * dpr); }
+    sg.setTransform(dpr, 0, 0, dpr, 0, 0); sg.clearRect(0, 0, w, h);
+    const left = 38, right = w - 4, hi = 12, lo = h - 22, n = Math.max(8, Math.round((right - left) / 20)), bw = (right - left) / n;
+    sg.font = '10px ' + MONO; sg.fillStyle = '#8d9bb5'; sg.textAlign = 'left';
+    sg.fillText('HIGH', 2, hi + 4); sg.fillText('LOW', 2, lo + 3);
+    sg.save(); sg.beginPath(); sg.rect(left, 0, right - left, h); sg.clip();
+    sg.strokeStyle = 'rgba(141,155,181,0.18)'; sg.lineWidth = 1; sg.beginPath();
+    for (let i = 0; i <= n; i++) { const x = right - ((sclock % 1) + i) * bw; sg.moveTo(x, 4); sg.lineTo(x, lo + 4); }
+    sg.stroke();
+    const X = (t) => right - (sclock - t) * bw, endT = (e) => e.t1 == null ? sclock : Math.min(e.t1, sclock);
+    let first = history.length; while (first > 0 && X(endT(history[first - 1])) > left) first--;
+    let pb = left, py = hi;
+    sg.lineWidth = 2; sg.lineJoin = 'round';
+    const idle = (a, b) => { if (b - a < 0.5) return; sg.strokeStyle = '#5c6a84'; sg.beginPath(); sg.moveTo(a, py); sg.lineTo(a, hi); sg.lineTo(b, hi); sg.stroke(); py = hi; };
+    for (let i = first; i < history.length; i++) {
+      const e = history[i]; if (e.t0 > sclock) continue;
+      const a = Math.max(left, X(e.t0)), b = Math.min(right, X(endT(e)));
+      if (b <= a) continue;
+      idle(pb, a);
+      const col = e.drv === 'f' ? '#e8a13c' : '#5fe0a0';
+      sg.strokeStyle = col; sg.fillStyle = col;
+      if (e.type === 'box') {
+        const m = Math.min(5, (b - a) / 3), mid = (hi + lo) / 2;
+        sg.beginPath(); sg.moveTo(a, mid); sg.lineTo(a + m, hi); sg.lineTo(b - m, hi); sg.lineTo(b, mid); sg.lineTo(b - m, lo); sg.lineTo(a + m, lo); sg.closePath();
+        sg.globalAlpha = 0.14; sg.fill(); sg.globalAlpha = 1; sg.stroke();
+        sg.font = '600 11px ' + MONO; sg.textAlign = 'center'; sg.fillStyle = e.col || col;
+        if (b - a > sg.measureText(e.tag).width + 6) sg.fillText(e.tag, (a + b) / 2, mid + 4);
+        py = hi;
+      } else {
+        const y = e.lv ? hi : lo;
+        sg.beginPath(); sg.moveTo(a, py); sg.lineTo(a, y); sg.lineTo(b, y); sg.stroke(); py = y;
+        if (e.tag && e.tag.length > 1) { sg.font = '600 11px ' + MONO; sg.textAlign = 'center'; if (b - a > sg.measureText(e.tag).width + 6) sg.fillText(e.tag, (a + b) / 2, (hi + lo) / 2 + 4); }
+        else if (e.tag) { sg.font = '600 11px ' + MONO; sg.textAlign = 'center'; sg.fillStyle = e.tag === 'S' || e.tag === 'P' ? '#a8743a' : '#8d9bb5'; sg.fillText(e.tag, X(e.t0) + bw / 2, h - 4); }
+      }
+      pb = b;
+    }
+    idle(pb, right);
+    sg.restore();
+    const ne = $('scopeNote'); if (ne.textContent !== noteText) ne.textContent = noteText;
+  }
+{{SCOPEDRAG}}
+
+  // ---------- camera ----------
+  let baseDist = 15.5;
+  function resize() {
+    const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); drawScope();
+  }
+  resize();
+  baseDist = 15.5 * Math.max(1, 0.85 / camera.aspect);
+  const wideDist = () => 38 * Math.max(1, 0.85 / camera.aspect);
+  controls.target.set(SC_X - 1.6, 1.3, 0);
+  camera.position.copy(controls.target).add(new THREE.Vector3(-0.3, 0.52, 0.8).normalize().multiplyScalar(baseDist));
+  new ResizeObserver(resize).observe(stage);
+  let lastFx = SC_X - 1.6, camV = 0, distAnim = null;
+  function camX() { const x = focus(); if (x != null && isFinite(x)) lastFx = x; return lastFx; }
+  // critically damped spring with a speed cap, so long moves ease in and out
+  function smoothX(cur, target, dt) {
+    if (dt <= 0) return cur;
+    const T = 0.9, maxSpeed = 14, w = 2 / T, x = w * dt, ex = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+    const lim = maxSpeed * T, change = Math.max(-lim, Math.min(lim, cur - target)), tgt = cur - change;
+    const tmpV = (camV + w * change) * dt; camV = (camV - w * tmpV) * ex;
+    let out = tgt + (change + tmpV) * ex;
+    if ((target - cur > 0) === (out > target)) { out = target; camV = 0; }
+    return out;
+  }
+
+  // ---------- frame loop ----------
+  const tmp = new THREE.Vector3(), ease = (u) => u * u * (3 - 2 * u);
+  let dimK = 1, railK = 0, mabK = 0, drvK = 0, leverK = 0, lastGoal = null;
+  function update(dt) {
+    const sdt = running ? dt : 0;
+    sclock += sdt * rate;
+    updateEmitter(sdt);
+    for (let i = units.length - 1; i >= 0; i--) {
+      const u = units[i];
+      if (u.state === 'rail') {
+        const v = u.vf || v0() * (u.kind === 'tube' ? TUBE_K : 1);
+        u.x += u.dir * v * sdt; u.mesh.position.x = u.x;
+        if (u.dir > 0) {
+          while (u.next < sensors.length && u.x >= sensors[u.next].x) passOut(u, sensors[u.next++]);
+          if (u.x >= END_X) startHop(u, BIN, hopT(), () => sinkUnit(u), 0.27);
+        } else {
+          while (u.next >= 0 && u.x <= sensors[u.next].x) { sensors[u.next].blink = 1; u.next--; }
+          if (u.x <= INBOX_X) { if (u.merge) u.state = 'arrived'; else startHop(u, INBOX, hopT(), () => sinkUnit(u), 0.27); }
+        }
+      } else if (u.state === 'hop') {
+        const hp = u.hop; hp.t += sdt; const k = Math.min(1, hp.t / hp.d);
+        u.mesh.position.set(hp.from.x + (hp.to.x - hp.from.x) * k, hp.from.y + (hp.to.y - hp.from.y) * k * k + 0.9 * k * (1 - k), hp.from.z + (hp.to.z - hp.from.z) * k);
+        if (hp.shrink) u.mesh.scale.setScalar(hp.s0 * (1 - hp.shrink * k));
+        if (k >= 1) { u.state = 'rest'; if (hp.after) hp.after(u); }
+      } else if (u.state === 'sink' || u.state === 'fade') {
+        u.st += sdt; const k = Math.min(1, u.st / (u.state === 'sink' ? 0.6 : u.fd));
+        if (u.state === 'sink') u.mesh.position.y = u.sy - 0.25 * k;
+        u.mesh.scale.setScalar(u.ss * (1 - k));
+        if (k >= 1) { removeUnit(u); units.splice(i, 1); }
+      }
+    }
+    tickWaits(sdt);
+
+    // room light, rails and the line driver lever
+    dimK += (dimTarget - dimK) * Math.min(1, dt * 4); hemi.intensity = 0.3 * dimK; sun.intensity = 0.5 * dimK;
+    railK += ((lineLow ? 1 : driver === 'none' ? 0.35 : 0) - railK) * Math.min(1, dt * 6);
+    mabK += ((mab ? 1 : 0) - mabK) * Math.min(1, dt * 8);
+    drvK += ((driver === 'f' && !lineLow ? 1 : 0) - drvK) * Math.min(1, dt * 6);
+    railMat.color.setScalar(1 - 0.97 * railK); railMat.envMapIntensity = 1.25 * (1 - 0.92 * railK);
+    railMat.emissive.setRGB(0.55 * mabK + 0.45 * drvK, 0.6 * mabK + 0.25 * drvK, 0.65 * mabK);
+    leverK += ((driver === 'c' ? 0 : 1) - leverK) * Math.min(1, dt * 6);
+    lever.rotation.z = -0.55 + 1.1 * leverK; drawLever(driver === 'c' ? 'drive' : 'listen');
+    spark = Math.max(0, spark - dt * 1.2); sparkSp.material.opacity = spark; sparkSp.scale.setScalar(2 + 3 * (1 - spark));
+
+    // readers: white blink per unit going past, a steady tint while matched / answering
+    sensors.forEach(sn => {
+      sn.blink = Math.max(0, sn.blink - dt * 7);
+      sn.mat.emissive.copy(sn.tint || BLUE); sn.mat.emissiveIntensity = (sn.tint ? 1.1 : 0.2) + 1.4 * sn.blink;
+    });
+    const scT = scLampCol ? 1.6 : 0; scLamp.emissiveIntensity += (scT - scLamp.emissiveIntensity) * Math.min(1, dt * 8);
+    if (scLampCol) scLamp.emissive.copy(scLampCol);
+    rulerMat.opacity += (rulerK - rulerMat.opacity) * Math.min(1, dt * 3); ruler.visible = rulerMat.opacity > 0.01;
+
+    const now = performance.now() / 1000;
+    FIX.forEach(f => {
+      if (f.t < 1) { f.t = Math.min(1, f.t + sdt / 0.5); f.cur.copy(f.from).lerp(f.to, ease(f.t)); }
+      f.flash = Math.max(0, f.flash - dt * 1.6);
+      const strobe = f.identify && Math.sin(now * 18) > 0.2;
+      const col = strobe ? WHITE3 : f.cur, k = strobe || Math.max(f.cur.r, f.cur.g, f.cur.b) > 0.001 ? 1 : 0, fl = 1 + f.flash * 0.9 + (strobe ? 1 : 0);
+      f.domeMat.color.set(0xd5dde8).lerp(col, k * 0.9); f.domeMat.emissive.copy(col); f.domeMat.emissiveIntensity = 1.5 * fl;
+      f.light.color.copy(col); f.light.intensity = 2.2 * k * fl;
+      f.glow.material.color.copy(col); f.glow.material.opacity = 0.75 * k * Math.min(1, fl);
+      f.glow.scale.setScalar(6 * (0.9 + 0.25 * f.flash));
+    });
+
+    if (follow) {
+      const nx = smoothX(controls.target.x, camX(), dt), a = Math.min(1, dt * 2.6);
+      tmp.set(nx - controls.target.x, (1.3 - controls.target.y) * a, -controls.target.z * a); controls.target.add(tmp); camera.position.add(tmp);
+      if (distGoal !== lastGoal) { lastGoal = distGoal; distAnim = distGoal === 'wide' ? wideDist() : baseDist; }
+      if (distAnim != null) {
+        tmp.copy(camera.position).sub(controls.target); const d = tmp.length(), nd = d + (distAnim - d) * Math.min(1, dt * 1.8);
+        camera.position.copy(controls.target).add(tmp.multiplyScalar(nd / d));
+        if (Math.abs(distAnim - nd) < 0.05) distAnim = null;
+      }
+    } else lastGoal = distGoal;
+    controls.update();
+  }
+
+  let lastT = performance.now();
+  function frame(nowMs) {
+    requestAnimationFrame(frame);
+    if (typeof nowMs !== 'number' || !isFinite(nowMs)) nowMs = performance.now();
+    const dt = Math.max(0, Math.min(0.05, (nowMs - lastT) / 1000)) || 0; lastT = nowMs;
+    update(dt); drawScope(); renderer.render(scene, camera);
+  }
+
+  drawPanel(); drawRuler(); FIX.forEach((f, i) => drawLabel(i)); drawScope();
+  setStatus('Ready. Press Play, or use ‹ › to pick a scene.');
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { drawPanel(); drawRuler(); FIX.forEach((f, i) => drawLabel(i)); leverState = ''; });
+  runFrom(0);
+  requestAnimationFrame(frame);
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) setTimeout(() => { if (!running) setRunning(true); }, 900);
+})();
+</script>
