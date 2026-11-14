@@ -143,13 +143,13 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
     <canvas id="scope"></canvas>
     <div class="scope-grip" id="scopeGrip" title="Drag to stretch" role="separator" aria-orientation="vertical" aria-label="Stretch the scope"></div>
     <div class="legend"><span><i class="one"></i>1</span><span><i class="zero"></i>0</span><span><i class="fr"></i>start / stop</span><span><i class="cap"></i>one byte</span></div>
-    <div class="fields"><span><i style="background:#e8a13c"></i>header</span><span><i style="background:#5aa2f5"></i>to UID</span><span><i style="background:#b48cf2"></i>from UID</span><span><i style="background:#f2c94c"></i>command</span><span><i style="background:#5fe0a0"></i>data</span><span><i style="background:#e6ecf7"></i>checksum</span></div>
+    <div class="fields"><span><i style="background:#ff5fd2"></i>header</span><span><i style="background:#3fd8e8"></i>to UID</span><span><i style="background:#9b7bff"></i>from UID</span><span><i style="background:#8d9bb5"></i>other</span><span><i style="background:#ffd83d"></i>command</span><span><i style="background:#ff8c42"></i>data</span><span><i style="background:#ff4d6d"></i>checksum</span></div>
   </div>
 </div>
 
 <div class="hud hud-bottom">
   <p class="latch" id="latch" hidden><b id="latchTag"></b><span id="latchText"></span></p>
-  <p class="hint chap"><button id="prevCh" aria-label="Previous scene">‹</button><span id="chName">1/5</span><button id="nextCh" aria-label="Next scene">›</button><span class="ver">v1</span></p>
+  <p class="hint chap"><button id="prevCh" aria-label="Previous scene">‹</button><span id="chName">1/5</span><button id="nextCh" aria-label="Next scene">›</button><span class="ver">v2</span></p>
   <div class="bar">
     <button id="playBtn" aria-label="Play"><span class="bl">Play</span><span class="bs" aria-hidden="true">▶</span></button>
     <button id="stepBtn" aria-label="Step"><span class="bl">Step</span><span class="bs" aria-hidden="true">Step</span></button>
@@ -578,7 +578,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
   const mGeo = new THREE.SphereGeometry(R, 24, 16);
   const mMat = [std({ color: 0x07080b, roughness: 0.1, metalness: 0.6, envMap: envTex, envMapIntensity: 0.9 }), std({ color: 0xf4f4f0, roughness: 0.2, envMap: envTex, envMapIntensity: 0.35 })];
   const fMat = { start: std({ color: 0x3b2208, roughness: 0.15, metalness: 0.7, envMap: envTex, envMapIntensity: 0.9 }), stop: std({ color: 0xe8a13c, roughness: 0.2, metalness: 0.5, envMap: envTex, envMapIntensity: 0.6 }) };
-  const FIELD_COL = { hdr: '#e8a13c', dst: '#5aa2f5', src: '#b48cf2', misc: '#8d9bb5', cmd: '#f2c94c', pd: '#5fe0a0', sum: '#e6ecf7', r: '#f2685f', g: '#5fe0a0', b: '#5aa2f5' };
+  const FIELD_COL = { hdr: '#ff5fd2', dst: '#3fd8e8', src: '#9b7bff', misc: '#8d9bb5', cmd: '#ffd83d', pd: '#ff8c42', sum: '#ff4d6d', r: '#f2685f', g: '#5fe0a0', b: '#5aa2f5' };
   const capBodyGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.78, 20, 1, true), capEndGeo = new THREE.CylinderGeometry(0.21, 0.21, 0.09, 20);
   const capCache = new Map();
   // a capsule's 8 bits are rings along its body, bit 0 at the leading end (DMX and RDM send the lowest bit first)
@@ -1076,8 +1076,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--copper); ou
       if (e.type === 'box') {
         const m = Math.min(5, (b - a) / 3), mid = (hi + lo) / 2;
         sg.beginPath(); sg.moveTo(a, mid); sg.lineTo(a + m, hi); sg.lineTo(b - m, hi); sg.lineTo(b, mid); sg.lineTo(b - m, lo); sg.lineTo(a + m, lo); sg.closePath();
-        sg.globalAlpha = 0.14; sg.fill(); sg.globalAlpha = 1; sg.stroke();
-        sg.font = '600 11px ' + MONO; sg.textAlign = 'center'; sg.fillStyle = e.col || col;
+        sg.fillStyle = e.col || col; sg.globalAlpha = e.col ? 0.9 : 0.14; sg.fill(); sg.globalAlpha = 1; sg.lineWidth = 2.5; sg.stroke(); sg.lineWidth = 2;
+        sg.font = '600 11px ' + MONO; sg.textAlign = 'center'; sg.fillStyle = e.col ? '#0b0e14' : col;
         if (b - a > sg.measureText(e.tag).width + 6) sg.fillText(e.tag, (a + b) / 2, mid + 4);
         py = hi;
       } else {
